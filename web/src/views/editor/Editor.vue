@@ -3,7 +3,7 @@ import { ref, onMounted, computed, onUnmounted, nextTick, shallowRef, watch } fr
 import { useRoute, useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import XTerminal from '@/components/XTerminal.vue'
-import { Save, Play, FilePen, TextCursorInput, Eye, X, Download, Trash2, AlertCircle, Terminal as TerminalIcon, RotateCcw, Eraser, Maximize2, Minimize2, SlidersHorizontal } from 'lucide-vue-next'
+import { Save, Play, FilePen, TextCursorInput, Eye, X, Download, Trash2, AlertCircle, Terminal as TerminalIcon, RotateCcw, Eraser, Maximize2, Minimize2, SlidersHorizontal, WrapText } from 'lucide-vue-next'
 import { api, type FileNode, type MiseLanguage } from '@/api'
 import { toast } from 'vue-sonner'
 import { PATHS } from '@/constants'
@@ -101,6 +101,15 @@ const editorRef = shallowRef()
 const isSmallScreen = ref(window.innerWidth < 1024)
 const editorFontSize = computed(() => isSmallScreen.value ? 12 : 13)
 
+// 自动换行开关（默认开启，可切换为单行横向滚动模式并持久化）
+const isWordWrap = ref<boolean>(localStorage.getItem('editor_word_wrap') !== 'false')
+
+function toggleWordWrap() {
+  isWordWrap.value = !isWordWrap.value
+  localStorage.setItem('editor_word_wrap', isWordWrap.value ? 'true' : 'false')
+  toast.success(isWordWrap.value ? '已开启自动换行' : '已关闭自动换行（可左右滑动查看长代码）')
+}
+
 const editorOptions = computed(() => ({
   minimap: { enabled: false },
   fontSize: editorFontSize.value,
@@ -110,9 +119,21 @@ const editorOptions = computed(() => ({
   domReadOnly: !isEditMode.value,
   automaticLayout: true,
   tabSize: 2,
-  wordWrap: 'on' as const,
+  wordWrap: (isWordWrap.value ? 'on' : 'off') as 'on' | 'off',
+  wrappingStrategy: 'advanced' as const,
   folding: true,
   renderLineHighlight: 'all' as const,
+  // 滚动条设置：小屏下滚动条常驻 (visible)，加宽触控滑块尺寸，开启水平横向滑块，阻止滚轮击穿
+  scrollbar: {
+    vertical: (isSmallScreen.value ? 'visible' : 'auto') as 'visible' | 'auto',
+    horizontal: (isWordWrap.value ? 'hidden' : (isSmallScreen.value ? 'visible' : 'auto')) as 'visible' | 'auto' | 'hidden',
+    verticalScrollbarSize: isSmallScreen.value ? 12 : 12,
+    horizontalScrollbarSize: isSmallScreen.value ? 12 : 12,
+    verticalSliderSize: isSmallScreen.value ? 12 : 12,
+    horizontalSliderSize: isSmallScreen.value ? 12 : 12,
+    alwaysConsumeMouseWheel: true,
+    handleMouseWheel: true,
+  },
 }))
 
 function handleEditorMount(editor: any) {
@@ -701,6 +722,17 @@ onUnmounted(() => {
                   <Save class="h-3 w-3" /> <span class="hidden sm:inline">保存</span>
                 </Button>
               </template>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 text-xs gap-1 px-2 transition-colors"
+                :class="isWordWrap ? 'text-primary bg-primary/10' : 'text-muted-foreground'"
+                :title="isWordWrap ? '当前为自动折行（点击切换为保持单行左右滑动）' : '当前为单行横滑（点击切换为自动换行）'"
+                @click="toggleWordWrap"
+              >
+                <WrapText class="h-3 w-3" />
+                <span class="hidden sm:inline">{{ isWordWrap ? '换行' : '横滑' }}</span>
+              </Button>
               <Button variant="ghost" size="sm" class="h-6 text-xs gap-1 px-2" title="配置运行环境" @click="showRunDialog = true">
                 <SlidersHorizontal class="h-3 w-3" /> <span class="hidden sm:inline">配置</span>
               </Button>
@@ -711,7 +743,10 @@ onUnmounted(() => {
           </template>
         </div>
       </div>
-      <div class="flex-1 flex flex-col min-h-0 overflow-hidden relative">
+      <div
+        class="flex-1 flex flex-col min-h-0 overflow-hidden relative overscroll-contain"
+        :style="{ touchAction: 'pan-x pan-y' }"
+      >
         <template v-if="selectedFile">
           <div v-if="isImageFile" class="h-full flex items-center justify-center p-4 bg-[#1a1a1a] overflow-auto select-none">
             <div class="relative max-w-full max-h-full flex flex-col items-center">
@@ -735,8 +770,23 @@ onUnmounted(() => {
               </Button>
             </div>
           </div>
-          <vue-monaco-editor v-else :key="selectedFile" v-model:value="fileContent" :language="getLanguage(selectedFile)"
-            theme="vs-dark" :options="editorOptions" @mount="handleEditorMount" />
+          <!-- 编辑器主体：当底部终端打开时动态抬高底边距，彻底避免底部水平滑块被遮挡 -->
+          <div
+            v-else
+            class="h-full w-full min-h-0 transition-all duration-300"
+            :class="[
+              showTerminalPanel && !isTerminalMaximized ? 'pb-[45%] max-pb-[80%]' : ''
+            ]"
+          >
+            <vue-monaco-editor
+              :key="selectedFile"
+              v-model:value="fileContent"
+              :language="getLanguage(selectedFile)"
+              theme="vs-dark"
+              :options="editorOptions"
+              @mount="handleEditorMount"
+            />
+          </div>
         </template>
         <div v-else class="h-full flex items-center justify-center text-muted-foreground text-sm">
           <span class="lg:hidden">从上方选择文件开始编辑</span>
@@ -854,3 +904,24 @@ onUnmounted(() => {
     </BaihuDialog>
   </div>
 </template>
+
+<style scoped>
+/* 针对小屏移动端：强制 Monaco Editor 滚动条滑块常驻显示，防止系统手势闲置时自动隐藏 */
+@media (max-width: 1024px) {
+  :deep(.monaco-editor .scrollbar.vertical),
+  :deep(.monaco-editor .scrollbar.horizontal) {
+    opacity: 1 !important;
+  }
+
+  :deep(.monaco-editor .scrollbar .slider) {
+    background: rgba(255, 255, 255, 0.28) !important;
+    border-radius: 6px !important;
+    opacity: 1 !important;
+  }
+
+  :deep(.monaco-editor .scrollbar .slider:active),
+  :deep(.monaco-editor .scrollbar .slider.active) {
+    background: rgba(255, 255, 255, 0.45) !important;
+  }
+}
+</style>

@@ -550,11 +550,13 @@ func (tc *TerminalController) buildTerminalEnv(userID string, extraEnvs ...strin
 	env := os.Environ()
 	env = append(env, extraEnvs...)
 
-	// 注入 baihu 命令运行时路径与配置，保证在终端里手动执行 baihu 子命令时
-	// 仍然能连接到与主服务一致的数据库，而不是回退到默认 sqlite。
-	if absBinDir, err := filepath.Abs(filepath.Join(constant.DataDir, "bin")); err == nil {
-		pathStr := absBinDir + string(os.PathListSeparator) + os.Getenv("PATH")
-		env = append(env, "PATH="+pathStr)
+	// 注入当前正在运行的 baihu 主程序所在目录到 PATH，保证在终端里手动执行 baihu 子命令时
+	// 永远精准命中主程序二进制并连接一致的运行时配置
+	if exeDir := filepath.Dir(utils.GetBaihuExecutable()); exeDir != "" {
+		if absExeDir, err := filepath.Abs(exeDir); err == nil {
+			pathStr := absExeDir + string(os.PathListSeparator) + os.Getenv("PATH")
+			env = append(env, "PATH="+pathStr)
+		}
 	}
 	env = append(env, utils.BuildRuntimeProcessEnv()...)
 

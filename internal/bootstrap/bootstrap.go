@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -116,19 +115,6 @@ func (a *App) initConfigWithPath(path string) {
 	if err != nil {
 		return
 	}
-
-	a.setupBaihuBin()
-}
-
-func (a *App) setupBaihuBin() {
-	binDir := filepath.Join(constant.DataDir, "bin")
-	_ = os.MkdirAll(binDir, 0755)
-
-	exe := utils.GetBaihuExecutable()
-	linkPath := filepath.Join(binDir, "baihu")
-	linkPath += windows.GetExeExtension()
-	os.Remove(linkPath)
-	_ = os.Symlink(exe, linkPath)
 }
 
 func (a *App) initDatabase() {

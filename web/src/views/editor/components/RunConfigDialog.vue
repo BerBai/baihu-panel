@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
-import { Plus, X, AlertCircle } from 'lucide-vue-next'
+import { Plus, X, SlidersHorizontal } from 'lucide-vue-next'
 
 interface Env {
   plugin: string
@@ -55,32 +55,47 @@ function updateEnvVersion(index: number, version: string) {
 
 <template>
   <Dialog :open="open" @update:open="val => emit('update:open', val)">
-    <DialogContent class="max-w-md" @openAutoFocus.prevent @pointerDownOutside.prevent>
+    <DialogContent class="sm:max-w-[420px] font-inter" @pointerDownOutside.prevent>
       <DialogHeader>
-        <DialogTitle class="text-sm">运行配置</DialogTitle>
+        <DialogTitle class="flex items-center gap-2">
+          <SlidersHorizontal class="h-4 w-4 text-primary" />
+          <span>运行环境配置</span>
+        </DialogTitle>
+        <DialogDescription class="text-xs">
+          选择脚本执行所依赖的 Mise 语言环境与对应版本。
+        </DialogDescription>
       </DialogHeader>
+
       <div class="space-y-4 py-2">
         <div class="space-y-2">
-          <Label class="text-xs font-medium">运行环境 (Mise)</Label>
-          <div class="space-y-3">
-            <div v-for="(env, index) in selectedEnvs" :key="index" class="flex gap-1.5 items-center group bg-muted/20 hover:bg-muted/40 p-1 rounded-lg border border-transparent hover:border-border/50 transition-all duration-200">
-              <!-- 语言选择 -->
+          <div class="flex items-center justify-between">
+            <Label class="text-xs font-medium text-foreground/80">语言与版本 (Mise)</Label>
+            <span v-if="selectedEnvs.length === 0" class="text-[11px] text-muted-foreground">默认系统环境</span>
+          </div>
+
+          <div class="space-y-2">
+            <div
+              v-for="(env, index) in selectedEnvs"
+              :key="index"
+              class="flex items-center gap-2"
+            >
+              <!-- 语言下拉 -->
               <div class="flex-1 min-w-0">
                 <Select :modelValue="env.plugin" @update:model-value="newVal => updateEnvPlugin(index, newVal as string)">
-                  <SelectTrigger class="w-full bg-background/50 hover:bg-background border-border/50 h-9 transition-colors">
+                  <SelectTrigger class="w-full h-8.5 text-xs font-inter">
                     <div class="flex items-center gap-2 overflow-hidden">
-                      <div class="h-5 w-5 rounded-full overflow-hidden shrink-0 bg-white flex items-center justify-center p-0.5" v-if="getLangIcon(env.plugin)">
+                      <div class="h-4 w-4 rounded overflow-hidden shrink-0 bg-white border border-black/5 flex items-center justify-center p-0.5" v-if="getLangIcon(env.plugin)">
                         <img :src="getLangIcon(env.plugin)" :alt="env.plugin" class="w-full h-full object-contain" />
                       </div>
-                      <SelectValue placeholder="语言" class="text-xs" />
+                      <SelectValue placeholder="选择语言..." class="truncate" />
                     </div>
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent class="max-h-56 font-inter">
                     <template v-for="(_, lang) in langGroups" :key="lang">
-                      <SelectItem v-if="lang !== 'none'" :value="lang as string">
+                      <SelectItem v-if="lang !== 'none'" :value="lang as string" class="text-xs font-inter">
                         <div class="flex items-center gap-2">
-                          <img v-if="getLangIcon(lang as string)" :src="getLangIcon(lang as string)" class="h-3 w-3" />
-                          <span class="text-xs">{{ lang }}</span>
+                          <img v-if="getLangIcon(lang as string)" :src="getLangIcon(lang as string)" class="h-3.5 w-3.5" />
+                          <span>{{ lang }}</span>
                         </div>
                       </SelectItem>
                     </template>
@@ -88,14 +103,14 @@ function updateEnvVersion(index: number, version: string) {
                 </Select>
               </div>
 
-              <!-- 版本选择 -->
+              <!-- 版本下拉 -->
               <div class="w-28 shrink-0">
-                 <Select :modelValue="env.version" @update:model-value="newVal => updateEnvVersion(index, newVal as string)" :disabled="!env.plugin">
-                  <SelectTrigger class="w-full bg-background/50 hover:bg-background border-border/50 h-9 text-xs">
+                <Select :modelValue="env.version" @update:model-value="newVal => updateEnvVersion(index, newVal as string)" :disabled="!env.plugin">
+                  <SelectTrigger class="w-full h-8.5 text-xs font-inter font-medium tracking-tight">
                     <SelectValue placeholder="版本" />
                   </SelectTrigger>
-                  <SelectContent v-if="env.plugin && langGroups && langGroups[env.plugin]">
-                    <SelectItem v-for="v in langGroups[env.plugin]" :key="v" :value="v" class="text-xs">
+                  <SelectContent v-if="env.plugin && langGroups && langGroups[env.plugin]" class="max-h-56 font-inter">
+                    <SelectItem v-for="v in langGroups[env.plugin]" :key="v" :value="v" class="text-xs font-inter font-medium tracking-tight">
                       {{ v }}
                     </SelectItem>
                   </SelectContent>
@@ -103,42 +118,50 @@ function updateEnvVersion(index: number, version: string) {
               </div>
 
               <!-- 删除按钮 -->
-              <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" @click="removeEnv(index)">
-                <X class="h-3.5 w-3.5" />
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-8.5 w-8.5 text-muted-foreground hover:text-destructive shrink-0"
+                title="删除"
+                @click="removeEnv(index)"
+              >
+                <X class="h-4 w-4" />
               </Button>
             </div>
 
-            <!-- 添加按钮 -->
-            <Button variant="outline" class="w-full border-dashed h-9 text-xs font-normal text-muted-foreground hover:text-foreground" @click="addEnv">
-              <Plus class="h-3 w-3 mr-2" /> 添加语言环境
+            <!-- 添加语言按钮 -->
+            <Button
+              variant="outline"
+              size="sm"
+              class="w-full border-dashed h-8 text-xs font-normal text-muted-foreground hover:text-foreground font-inter"
+              @click="addEnv"
+            >
+              <Plus class="h-3.5 w-3.5 mr-1.5" /> 添加语言环境
             </Button>
           </div>
         </div>
 
-        <div class="text-[10px] text-amber-500 bg-amber-500/10 p-3 rounded-lg border border-amber-500/20 flex gap-2">
-          <AlertCircle class="h-3 w-3 shrink-0 mt-0.5" />
-          <p>请先在「语言依赖」中安装所需的运行时。任务执行时将使用该环境，确保所有依赖已正确配置（如果是执行 <span class="font-bold">bash</span> 脚本，可随便选择一个环境即可）。</p>
-        </div>
-
-        <div class="text-[10px] text-muted-foreground bg-muted/40 p-3 rounded-lg border border-border/50">
-          <p class="font-medium mb-1">提示：</p>
-          <template v-if="selectedEnvs.length === 0">
-            <p>使用服务器默认环境运行脚本。</p>
-          </template>
-          <template v-else>
-            <p>将在此 Mise 隔离环境中运行脚本：</p>
-            <div class="mt-1 flex flex-wrap gap-1">
-              <span v-for="env in selectedEnvs" :key="env.plugin" class="bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm" v-show="env.plugin && env.version">
-                {{ env.plugin }}@{{ env.version }}
-              </span>
-            </div>
-          </template>
-        </div>
+        <p class="text-[11px] text-muted-foreground leading-relaxed">
+          未配置时将使用系统默认环境运行；如需其他语言运行时，请先在「环境依赖 - 语言依赖」中完成安装。
+        </p>
       </div>
-      <DialogFooter class="gap-2">
-        <Button variant="outline" size="sm" class="h-8 text-xs px-4" @click="emit('update:open', false)">取消</Button>
-        <Button size="sm" class="h-8 text-xs px-4" @click="emit('confirm')">确定</Button>
+
+      <DialogFooter class="gap-2 sm:gap-0 font-inter">
+        <Button variant="outline" size="sm" class="h-8 text-xs" @click="emit('update:open', false)">
+          取消
+        </Button>
+        <Button size="sm" class="h-8 text-xs" @click="emit('confirm')">
+          确定
+        </Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>
 </template>
+
+<style scoped>
+.font-inter {
+  font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  font-feature-settings: "cv05", "cv08", "cv11", "ss01", "ss03", "tnum" !important;
+  font-optical-sizing: auto;
+}
+</style>

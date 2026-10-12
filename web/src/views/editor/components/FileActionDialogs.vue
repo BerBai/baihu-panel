@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -60,9 +60,10 @@ defineExpose({ openCreate, openDelete, openRename, closeCreate: () => showCreate
 <template>
   <!-- 新建对话框 -->
   <Dialog v-model:open="showCreate">
-    <DialogContent class="max-w-xs" @openAutoFocus.prevent>
+    <DialogContent class="max-w-xs">
       <DialogHeader>
         <DialogTitle class="text-sm">新建</DialogTitle>
+        <DialogDescription class="sr-only">在当前目录下新建文件或文件夹</DialogDescription>
       </DialogHeader>
       <div class="space-y-3 py-2">
         <div class="space-y-1">
@@ -109,9 +110,10 @@ defineExpose({ openCreate, openDelete, openRename, closeCreate: () => showCreate
 
   <!-- 重命名对话框 -->
   <Dialog v-model:open="showRename">
-    <DialogContent class="max-w-xs" @openAutoFocus.prevent>
+    <DialogContent class="max-w-xs">
       <DialogHeader>
         <DialogTitle class="text-sm">重命名</DialogTitle>
+        <DialogDescription class="sr-only">修改文件或文件夹名称</DialogDescription>
       </DialogHeader>
       <div class="space-y-3 py-2">
         <div class="space-y-1">

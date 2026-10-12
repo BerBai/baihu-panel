@@ -51,6 +51,13 @@ const showRunDialog = ref(false)
 const selectedEnvs = ref<{ plugin: string; version: string }[]>([])
 const installedLangs = ref<MiseLanguage[]>([])
 
+function openRunConfig(e?: MouseEvent) {
+  if (e?.currentTarget) {
+    (e.currentTarget as HTMLElement).blur()
+  }
+  showRunDialog.value = true
+}
+
 const langGroups = computed(() => {
   const groups: Record<string, string[]> = {}
   installedLangs.value.forEach(lang => {
@@ -136,8 +143,16 @@ const editorOptions = computed(() => ({
   },
 }))
 
-function handleEditorMount(editor: any) {
+function handleEditorMount(editor: any, monaco: any) {
   editorRef.value = editor
+  // 遵循 VS Code 官方策略：忽略用户主动取消操作导致的 Canceled 信号，保持控制台整洁
+  if (monaco?.editor?.onUnexpectedError) {
+    monaco.editor.onUnexpectedError((err: any) => {
+      const isCanceled = err?.name === 'Canceled' || err?.message === 'Canceled' || err === 'Canceled'
+      if (isCanceled) return
+      console.error(err)
+    })
+  }
 }
 
 function handleResize() {
@@ -656,6 +671,12 @@ function handleGlobalKeydown(e: KeyboardEvent) {
   }
 }
 
+function handleUnhandledRejection(e: PromiseRejectionEvent) {
+  if (e.reason?.name === 'Canceled' || e.reason?.message === 'Canceled') {
+    e.preventDefault()
+  }
+}
+
 onMounted(async () => {
   await initSortMethod()
   initFromUrl()
@@ -663,11 +684,13 @@ onMounted(async () => {
   fetchInstalledLangs()
   window.addEventListener('resize', handleResize)
   window.addEventListener('keydown', handleGlobalKeydown)
+  window.addEventListener('unhandledrejection', handleUnhandledRejection)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', handleGlobalKeydown)
+  window.removeEventListener('unhandledrejection', handleUnhandledRejection)
 })
 </script>
 
@@ -733,7 +756,7 @@ onUnmounted(() => {
                 <WrapText class="h-3 w-3" />
                 <span class="hidden sm:inline">{{ isWordWrap ? '换行' : '横滑' }}</span>
               </Button>
-              <Button variant="ghost" size="sm" class="h-6 text-xs gap-1 px-2" title="配置运行环境" @click="showRunDialog = true">
+              <Button variant="ghost" size="sm" class="h-6 text-xs gap-1 px-2" title="配置运行环境" @click="openRunConfig">
                 <SlidersHorizontal class="h-3 w-3" /> <span class="hidden sm:inline">配置</span>
               </Button>
               <Button variant="ghost" size="sm" class="h-6 text-xs gap-1 px-2 text-primary hover:text-primary" @click="runScript">
@@ -823,7 +846,7 @@ onUnmounted(() => {
                 </span>
               </div>
               <div class="flex items-center gap-0.5 sm:gap-1 shrink-0">
-                <Button variant="ghost" size="icon" class="h-6 w-6 text-gray-400 hover:text-white hover:bg-[#333] rounded shrink-0" title="配置运行环境" @click="showRunDialog = true">
+                <Button variant="ghost" size="icon" class="h-6 w-6 text-gray-400 hover:text-white hover:bg-[#333] rounded shrink-0" title="配置运行环境" @click="openRunConfig">
                   <SlidersHorizontal class="h-3.5 w-3.5" />
                 </Button>
                 <Button variant="ghost" size="icon" class="h-6 w-6 text-gray-400 hover:text-white hover:bg-[#333] rounded shrink-0" title="重新运行" @click="restartTerminalExecution">

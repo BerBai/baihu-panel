@@ -798,35 +798,28 @@ const schedulerChartData = computed(() => ({
       </div>
       <div v-if="stats && stats.scheduler.workers" class="mt-4">
         <Card class="border-border/60">
-            <CardHeader class="pb-3">
-              <div class="flex items-center justify-between gap-3">
-                <div class="space-y-0.5">
-                  <CardTitle class="text-sm font-semibold text-foreground flex items-center gap-2">
-                    <span class="p-1 rounded-md bg-amber-500/10 text-amber-500">
-                      <Layers class="w-3.5 h-3.5" />
-                    </span>
-                    并发池 Worker 调度
-                  </CardTitle>
-                  <CardDescription class="text-xs">底层协程并发池任务调度与实时执行状态</CardDescription>
-                </div>
-                <!-- 统计徽章 -->
-                <div class="shrink-0">
+            <CardHeader class="pb-2">
+              <div class="flex items-center justify-between">
+                <CardTitle class="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <span class="p-1 rounded-md bg-amber-500/10 text-amber-500 shrink-0">
+                    <Layers class="w-3.5 h-3.5" />
+                  </span>
+                  并发池 Worker 调度
+                </CardTitle>
+                <div class="shrink-0 flex items-center gap-1.5">
                   <span
                     v-if="busyWorkersCount > 0"
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                    class="text-[10px] px-1.5 py-0.5 rounded border border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10 font-medium tracking-wide flex items-center gap-1"
                   >
-                    <span class="relative flex h-2 w-2">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                    </span>
-                    {{ busyWorkersCount }} / {{ totalWorkersCount }} 运行中
+                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    {{ busyWorkersCount }}/{{ totalWorkersCount }} 运行中
                   </span>
                   <span
                     v-else
-                    class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground border border-border/60"
+                    class="text-[10px] px-1.5 py-0.5 rounded border border-border/60 text-muted-foreground bg-muted/20 font-medium tracking-wide flex items-center gap-1"
                   >
                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    全部就绪待命 ({{ totalWorkersCount }} 并发槽)
+                    全部就绪 ({{ totalWorkersCount }} 槽)
                   </span>
                 </div>
               </div>

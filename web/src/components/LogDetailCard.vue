@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { 
-  X, Trash2, Maximize2, Ban, Search, XCircle
+  X, Trash2, Maximize2, Ban, Search, XCircle, Copy, Check
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +10,8 @@ import StatusBadge from './StatusBadge.vue'
 import { TASK_STATUS } from '@/constants'
 import type { TaskLog } from '@/api'
 import { formatDateTime, formatDuration } from '@/utils/date'
+import { copyToClipboard } from '@/utils/clipboard'
+import { toast } from 'vue-sonner'
 
 interface Props {
   log: TaskLog | null
@@ -84,6 +86,27 @@ watch(() => props.log, (newLog) => {
     }
   }
 }, { deep: true, immediate: true })
+
+const copiedLog = ref(false)
+let copyTimer: ReturnType<typeof setTimeout> | null = null
+
+async function handleCopyLog() {
+  if (!props.content || !props.content.trim()) {
+    toast.error('当前暂无日志内容可复制')
+    return
+  }
+  const success = await copyToClipboard(props.content)
+  if (success) {
+    copiedLog.value = true
+    toast.success('已复制日志全文到剪贴板')
+    if (copyTimer) clearTimeout(copyTimer)
+    copyTimer = setTimeout(() => {
+      copiedLog.value = false
+    }, 2000)
+  } else {
+    toast.error('复制日志失败')
+  }
+}
 </script>
 
 <template>
@@ -212,9 +235,16 @@ watch(() => props.log, (newLog) => {
       <div v-if="variant === 'full'" 
         class="px-4 py-1 text-sm text-muted-foreground border-b bg-muted/20 flex items-center justify-between shrink-0">
         <span class="text-sm font-normal text-muted-foreground text-[12px]">日志输出</span>
-        <Button variant="ghost" size="icon" class="h-6 w-6" @click="$emit('maximize')" title="全屏查看">
-          <Maximize2 class="h-3.5 w-3.5" />
-        </Button>
+        <div class="flex items-center gap-1">
+          <Button variant="ghost" size="icon" class="h-6 w-6 text-muted-foreground hover:text-foreground"
+            :disabled="!content" @click="handleCopyLog" :title="copiedLog ? '已复制' : '复制日志全文'">
+            <Check v-if="copiedLog" class="h-3.5 w-3.5 text-emerald-500" />
+            <Copy v-else class="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="ghost" size="icon" class="h-6 w-6" @click="$emit('maximize')" title="全屏查看">
+            <Maximize2 class="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <!-- 日志列表 -->

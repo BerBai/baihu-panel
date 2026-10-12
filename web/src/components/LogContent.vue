@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { AlertCircle, Loader2 } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
+import { UnicodeGraphemesAddon } from '@xterm/addon-unicode-graphemes'
 import { useTheme } from '@/composables/useTheme'
 import '@xterm/xterm/css/xterm.css'
 
@@ -70,10 +71,15 @@ function initTerminal() {
     theme: getTheme(),
     allowTransparency: true,
     scrollback: 5000,
+    // terminal.unicode 属 proposed API，加载 Unicode 宽度表插件前必须放开
+    allowProposedApi: true,
   })
 
   fitAddon = new FitAddon()
   terminal.loadAddon(fitAddon)
+  // xterm 内置宽度表为 Unicode 6，emoji 被判 1 列而字形约占 2.5 列，letterSpacing
+  // 被压成负值导致 emoji 覆盖右侧文字；此插件提供 Unicode 15 宽度表与字素簇合并
+  terminal.loadAddon(new UnicodeGraphemesAddon())
   terminal.open(terminalRef.value)
 
   // 禁用手机端点击弹出键盘

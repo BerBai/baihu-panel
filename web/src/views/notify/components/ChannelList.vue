@@ -2,7 +2,7 @@
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Plus, Trash2, TestTube, Pencil, Bell, Calendar, Copy, Check } from 'lucide-vue-next'
+import { Plus, Trash2, Send, Pencil, Bell, Calendar, Copy, Check } from 'lucide-vue-next'
 import type { NotifyChannel, ChannelType } from '@/api'
 import { ref } from 'vue'
 import { toast } from 'vue-sonner'
@@ -103,9 +103,9 @@ function handleCopy(text: string, blockId: string) {
                 <Copy v-else class="w-4 h-4" />
               </Button>
               <Button variant="ghost" size="icon"
-                class="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary transition-colors"
+                class="h-8 w-8 rounded-full hover:bg-sky-500/10 hover:text-sky-500 dark:hover:bg-sky-400/10 dark:hover:text-sky-400 transition-colors"
                 @click="emit('test', ch)" title="测试发送">
-                <TestTube class="w-4 h-4" />
+                <Send class="w-4 h-4" />
               </Button>
               <Button variant="ghost" size="icon"
                 class="h-8 w-8 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"

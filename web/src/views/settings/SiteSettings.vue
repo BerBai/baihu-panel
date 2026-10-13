@@ -141,6 +141,10 @@ async function saveSettings() {
 }
 
 async function generateOpenapiToken() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止生成 OpenAPI Token')
+    return
+  }
   try {
     const res = await api.settings.generateOpenapiToken()
     form.value.openapi_token = res.token
@@ -156,6 +160,10 @@ async function generateOpenapiToken() {
 }
 
 async function copyOpenapiToken() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止操作 OpenAPI Token')
+    return
+  }
   if (!form.value.openapi_token) return
   const success = await copyTextToClipboard(form.value.openapi_token)
   if (success) {
@@ -313,12 +321,19 @@ onMounted(loadSettings)
               <CardTitle class="flex items-center gap-2 text-sm sm:text-base font-semibold min-w-0">
                 <Code2 class="w-4 h-4 text-sky-500 shrink-0" />
                 <span class="truncate">OpenAPI 接口与集成</span>
-                <Badge variant="secondary" class="font-normal text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 shrink-0">
+                <Badge
+                  v-if="isDemoMode"
+                  variant="destructive"
+                  class="text-[10px] px-1.5 py-0 font-normal shrink-0"
+                >
+                  演示模式禁用
+                </Badge>
+                <Badge v-else variant="secondary" class="font-normal text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 shrink-0">
                   推荐接入
                 </Badge>
               </CardTitle>
               <div class="flex items-center gap-2 shrink-0">
-                <Switch v-model="form.openapi_enabled" id="openapi-enabled" />
+                <Switch v-model="form.openapi_enabled" id="openapi-enabled" :disabled="isDemoMode" />
                 <Label for="openapi-enabled" class="text-xs cursor-pointer">开启</Label>
               </div>
             </div>
@@ -346,6 +361,12 @@ onMounted(loadSettings)
             </div>
           </CardHeader>
           <CardContent class="space-y-4">
+            <!-- 演示模式警示条 -->
+            <div v-if="isDemoMode" class="flex items-center gap-2 p-2.5 rounded-xl bg-destructive/10 text-destructive text-xs">
+              <AlertTriangle class="h-4 w-4 shrink-0" />
+              <span>演示模式下已锁定 OpenAPI 接口服务与访问凭据。</span>
+            </div>
+
             <p class="text-xs text-muted-foreground leading-relaxed">
               外部请求时需携带请求头
               <code class="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono select-all inline-block break-all">Authorization: Bearer &lt;Token&gt;</code>。
@@ -359,16 +380,16 @@ onMounted(loadSettings)
                     v-model="form.openapi_token"
                     placeholder="点击生成 32 位 Token"
                     class="text-xs sm:text-sm h-9 font-mono flex-1 min-w-0"
-                    :disabled="!form.openapi_enabled"
+                    :disabled="isDemoMode || !form.openapi_enabled"
                   />
                   <Button
                     type="button"
                     variant="outline"
                     size="icon"
                     class="h-9 w-9 shrink-0"
-                    @click="showOpenapiConfirmDialog = true"
-                    title="随机生成"
-                    :disabled="!form.openapi_enabled"
+                    @click="isDemoMode ? toast.error('演示模式下禁止生成 OpenAPI Token') : (showOpenapiConfirmDialog = true)"
+                    :title="isDemoMode ? '演示模式禁用' : '随机生成'"
+                    :disabled="isDemoMode || !form.openapi_enabled"
                   >
                     <RefreshCw class="w-4 h-4" />
                   </Button>
@@ -378,8 +399,8 @@ onMounted(loadSettings)
                     size="icon"
                     class="h-9 w-9 shrink-0"
                     @click="copyOpenapiToken"
-                    title="复制 Token"
-                    :disabled="!form.openapi_token || !form.openapi_enabled"
+                    :title="isDemoMode ? '演示模式禁用' : '复制 Token'"
+                    :disabled="isDemoMode || !form.openapi_token || !form.openapi_enabled"
                   >
                     <Copy class="w-4 h-4" />
                   </Button>
@@ -392,7 +413,7 @@ onMounted(loadSettings)
                   v-model="form.openapi_token_expire"
                   type="date"
                   class="w-full dark:[color-scheme:dark] h-9 text-xs sm:text-sm"
-                  :disabled="!form.openapi_enabled"
+                  :disabled="isDemoMode || !form.openapi_enabled"
                 />
                 <p class="text-[10px] text-muted-foreground">超过此日期后 Token 将失效，置空代表永不过期</p>
               </div>

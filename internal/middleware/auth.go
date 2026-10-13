@@ -126,6 +126,11 @@ func AdminRequired() gin.HandlerFunc {
 func OpenapiRequired() gin.HandlerFunc {
 	settingsSvc := services.NewSettingsService()
 	return func(c *gin.Context) {
+		if constant.DemoMode {
+			utils.Forbidden(c, "演示模式下已禁用 OpenAPI 接口调用能力")
+			c.Abort()
+			return
+		}
 		if checkOpenapiToken(c, settingsSvc) {
 			return
 		}
@@ -227,6 +232,15 @@ func ClearAuthCookie(c *gin.Context) {
 // SwaggerAuth Swagger 认证中间件 (Basic Auth)
 func SwaggerAuth() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if constant.DemoMode {
+			c.JSON(http.StatusForbidden, gin.H{
+				"code": 403,
+				"msg":  "演示模式下已禁用 OpenAPI 接口与文档能力",
+			})
+			c.Abort()
+			return
+		}
+
 		settingsSvc := services.NewSettingsService()
 		siteConfig := settingsSvc.GetSection(constant.SectionSite)
 		tokenJson := siteConfig[constant.KeyOpenapiToken]

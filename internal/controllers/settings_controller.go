@@ -275,12 +275,27 @@ func (sc *SettingsController) UpdateSiteSettings(c *gin.Context) {
 			return
 		}
 
+		// 检查是否有针对 OpenAPI 配置的实质修改
+		var currentTokenConfig vo.TokenConfig
+		if tokenJson, ok := current[constant.KeyOpenapiToken]; ok && tokenJson != "" {
+			_ = json.Unmarshal([]byte(tokenJson), &currentTokenConfig)
+		}
+		if req.OpenapiEnabled != currentTokenConfig.Enabled ||
+			(req.OpenapiToken != "" && req.OpenapiToken != currentTokenConfig.Token) ||
+			(req.OpenapiTokenExpire != "" && req.OpenapiTokenExpire != currentTokenConfig.ExpireAt) {
+			utils.BadRequest(c, "演示模式下禁止修改 OpenAPI 配置")
+			return
+		}
+
 		// 强制保持现有值，防止被覆盖
 		req.CacheTrimEnabled = currentTrimEnabled
 		req.MemWatermarkRate = currentWatermark
 		req.CacheMaxMB = currentCacheMax
 		req.CacheTrimSpec = currentTrimSpec
 		req.TaskFinishedTrim = currentFinishedTrim
+		req.OpenapiEnabled = currentTokenConfig.Enabled
+		req.OpenapiToken = currentTokenConfig.Token
+		req.OpenapiTokenExpire = currentTokenConfig.ExpireAt
 	}
 
 	openapiTokenJson := ""
@@ -347,6 +362,10 @@ func (sc *SettingsController) UpdateSiteSettings(c *gin.Context) {
 
 // GenerateOpenapiToken 随机生成OpenAPI Token
 func (sc *SettingsController) GenerateOpenapiToken(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止生成 OpenAPI Token")
+		return
+	}
 	utils.Success(c, gin.H{
 		"token": strings.ToLower(utils.RandomString(32)),
 	})

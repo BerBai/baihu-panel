@@ -124,8 +124,10 @@ func GetAppStoreAppsJSONCandidates() []string {
 	branch := GetAppStoreBranch()
 	candidates := make([]string, 0, 10)
 
-	// 1. GitHub Pages (如开启，通常速度快且支持跨域)
-	candidates = append(candidates, fmt.Sprintf("https://%s.github.io/%s/apps.json", DefaultAppStoreOwner, DefaultAppStoreRepo))
+	// 1. GitHub Pages (仅当目标分支为 main 时优先使用，因为 GitHub Pages 默认仅承载 main 分支产物)
+	if branch == "main" || branch == DefaultAppStoreBranch {
+		candidates = append(candidates, fmt.Sprintf("https://%s.github.io/%s/apps.json", DefaultAppStoreOwner, DefaultAppStoreRepo))
+	}
 
 	// 2. 注入全局 GitHub Raw 候选源
 	rawCandidates := GetGitHubRawCandidates(DefaultAppStoreOwner, DefaultAppStoreRepo, branch, "apps.json")

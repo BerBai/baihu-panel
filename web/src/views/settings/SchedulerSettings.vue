@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { useSiteSettings } from '@/composables/useSiteSettings'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +27,8 @@ import {
   Workflow,
   Sparkles,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-vue-next'
 
 interface SchedulerSettings {
@@ -42,6 +44,11 @@ const form = ref<SchedulerSettings>({
 })
 const loading = ref(false)
 const showConfirm = ref(false)
+const { siteSettings } = useSiteSettings()
+
+const isDemoMode = computed(() => {
+  return siteSettings.value?.demo_mode === 'true' || (siteSettings.value as any)?.demo_mode === true
+})
 
 async function loadSettings() {
   try {
@@ -51,10 +58,18 @@ async function loadSettings() {
 }
 
 function confirmSave() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止修改调度参数')
+    return
+  }
   showConfirm.value = true
 }
 
 function applyPreset(name: string, workers: string, queue: string, rate: string) {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止修改调度参数')
+    return
+  }
   form.value.worker_count = workers
   form.value.queue_size = queue
   form.value.rate_interval = rate
@@ -96,6 +111,14 @@ onMounted(loadSettings)
                   <span>调度引擎参数</span>
                 </CardTitle>
                 <Badge
+                  v-if="isDemoMode"
+                  variant="destructive"
+                  class="text-[10px] px-1.5 py-0 font-normal shrink-0"
+                >
+                  演示模式禁用
+                </Badge>
+                <Badge
+                  v-else
                   class="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] px-1.5 py-0 font-normal shadow-none flex items-center gap-1"
                 >
                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -111,6 +134,12 @@ onMounted(loadSettings)
 
         <CardContent class="flex-1 flex flex-col justify-between px-5 pb-0 pt-0 space-y-4">
           <div class="space-y-3.5">
+            <!-- 演示模式警示条 -->
+            <div v-if="isDemoMode" class="flex items-center gap-2 p-2.5 rounded-xl bg-destructive/10 text-destructive text-xs">
+              <AlertTriangle class="h-4 w-4 shrink-0" />
+              <span>演示模式下已锁定系统调度参数修改。</span>
+            </div>
+
             <!-- 参数 1 & 2：并发 Worker 与 队列深度 -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <!-- 并发限制数 -->
@@ -126,6 +155,7 @@ onMounted(loadSettings)
                     type="number"
                     v-model="form.worker_count"
                     :min="1"
+                    :disabled="isDemoMode"
                     class="h-9 text-xs font-bold font-inter pr-12 no-spin"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
@@ -150,6 +180,7 @@ onMounted(loadSettings)
                     type="number"
                     v-model="form.queue_size"
                     :min="1"
+                    :disabled="isDemoMode"
                     class="h-9 text-xs font-bold font-inter pr-14 no-spin"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
@@ -176,6 +207,7 @@ onMounted(loadSettings)
                   type="number"
                   v-model="form.rate_interval"
                   :min="0"
+                  :disabled="isDemoMode"
                   class="h-9 text-xs font-bold font-inter pr-12 no-spin"
                 />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
@@ -204,7 +236,7 @@ onMounted(loadSettings)
             </span>
             <Button
               @click="confirmSave"
-              :disabled="loading"
+              :disabled="loading || isDemoMode"
               class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5"
             >
               <Zap class="w-3.5 h-3.5" />

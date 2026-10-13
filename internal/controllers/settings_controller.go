@@ -250,6 +250,39 @@ func (sc *SettingsController) UpdateSiteSettings(c *gin.Context) {
 		return
 	}
 
+	if constant.DemoMode {
+		current := sc.settingsService.GetSection(constant.SectionSite)
+		getDefault := func(key string) string {
+			if v, ok := current[key]; ok && v != "" {
+				return v
+			}
+			return constant.DefaultSettings[constant.SectionSite][key]
+		}
+
+		currentTrimEnabled := getDefault(constant.KeyCacheTrimEnabled) == "true"
+		currentWatermark := getDefault(constant.KeyMemWatermarkRate)
+		currentCacheMax := getDefault(constant.KeyCacheMaxMB)
+		currentTrimSpec := getDefault(constant.KeyCacheTrimSpec)
+		currentFinishedTrim := getDefault(constant.KeyTaskFinishedTrim) == "true"
+
+		// 检查是否有针对内存优化配置的实质修改
+		if req.CacheTrimEnabled != currentTrimEnabled ||
+			(req.MemWatermarkRate != "" && req.MemWatermarkRate != currentWatermark) ||
+			(req.CacheMaxMB != "" && req.CacheMaxMB != currentCacheMax) ||
+			(req.CacheTrimSpec != "" && req.CacheTrimSpec != currentTrimSpec) ||
+			req.TaskFinishedTrim != currentFinishedTrim {
+			utils.BadRequest(c, "演示模式下禁止修改容器内存与缓存优化配置")
+			return
+		}
+
+		// 强制保持现有值，防止被覆盖
+		req.CacheTrimEnabled = currentTrimEnabled
+		req.MemWatermarkRate = currentWatermark
+		req.CacheMaxMB = currentCacheMax
+		req.CacheTrimSpec = currentTrimSpec
+		req.TaskFinishedTrim = currentFinishedTrim
+	}
+
 	openapiTokenJson := ""
 	if req.OpenapiToken != "" || req.OpenapiTokenExpire != "" || req.OpenapiEnabled {
 		tokenConfig := vo.TokenConfig{
@@ -321,6 +354,11 @@ func (sc *SettingsController) GenerateOpenapiToken(c *gin.Context) {
 
 // TrimCache 手动触发容器 PageCache 与运行时内存自适应回收
 func (sc *SettingsController) TrimCache(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止清理缓存")
+		return
+	}
+
 	_ = memopt.TryReclaimCgroupMemory(0)
 	trimmedFiles := memopt.TrimContainerCache()
 	memopt.Free()
@@ -342,6 +380,11 @@ func (sc *SettingsController) GetSchedulerSettings(c *gin.Context) {
 
 // UpdateSchedulerSettings 更新调度设置
 func (sc *SettingsController) UpdateSchedulerSettings(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止修改调度参数")
+		return
+	}
+
 	var req struct {
 		WorkerCount  string `json:"worker_count"`
 		QueueSize    string `json:"queue_size"`

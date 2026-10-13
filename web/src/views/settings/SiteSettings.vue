@@ -39,7 +39,14 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-const { refreshSettings } = useSiteSettings()
+const { refreshSettings, siteSettings } = useSiteSettings()
+
+const isDemoMode = computed(() => {
+  return form.value.demo_mode === 'true' ||
+    (form.value as any).demo_mode === true ||
+    siteSettings.value?.demo_mode === 'true' ||
+    (siteSettings.value as any)?.demo_mode === true
+})
 
 const form = ref<SiteSettings>({
   title: '',
@@ -96,7 +103,8 @@ async function loadSettings() {
       cache_max_mb: res.cache_max_mb || '60',
       cache_trim_spec: res.cache_trim_spec || '@every 5m',
       task_finished_trim: res.task_finished_trim === undefined ? true : (res.task_finished_trim === true || (res as any).task_finished_trim === 'true'),
-      openapi_enabled: res.openapi_enabled === true || (res as any).openapi_enabled === 'true'
+      openapi_enabled: res.openapi_enabled === true || (res as any).openapi_enabled === 'true',
+      demo_mode: res.demo_mode
     }
   } catch { }
 }
@@ -211,6 +219,10 @@ async function copyMcpConfigJson() {
 }
 
 async function handleTrimCache() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止清理缓存')
+    return
+  }
   trimming.value = true
   try {
     const res = await api.settings.trimCache()
@@ -620,9 +632,16 @@ onMounted(loadSettings)
               <CardTitle class="flex items-center gap-2 text-sm sm:text-base font-semibold min-w-0">
                 <Cpu class="w-4 h-4 text-emerald-500 shrink-0" />
                 <span class="truncate">容器内存与缓存优化</span>
+                <Badge
+                  v-if="isDemoMode"
+                  variant="destructive"
+                  class="text-[10px] px-1.5 py-0 font-normal shrink-0"
+                >
+                  演示模式禁用
+                </Badge>
               </CardTitle>
               <div class="flex items-center gap-2 shrink-0">
-                <Switch v-model="form.cache_trim_enabled" id="cache-trim-enabled" />
+                <Switch v-model="form.cache_trim_enabled" id="cache-trim-enabled" :disabled="isDemoMode" />
                 <Label for="cache-trim-enabled" class="text-xs cursor-pointer">开启自适应</Label>
               </div>
             </div>
@@ -631,6 +650,12 @@ onMounted(loadSettings)
             </CardDescription>
           </CardHeader>
           <CardContent class="space-y-4">
+            <!-- 演示模式警示条 -->
+            <div v-if="isDemoMode" class="flex items-center gap-2 p-2.5 rounded-xl bg-destructive/10 text-destructive text-xs">
+              <AlertTriangle class="h-4 w-4 shrink-0" />
+              <span>演示模式下已锁定容器内存水位与文件缓存配置修改。</span>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <!-- 警戒水位线 -->
               <div class="space-y-1.5">
@@ -642,7 +667,7 @@ onMounted(loadSettings)
                     class="h-9 pr-8 text-sm"
                     min="10"
                     max="99"
-                    :disabled="!form.cache_trim_enabled"
+                    :disabled="isDemoMode || !form.cache_trim_enabled"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
                 </div>
@@ -658,7 +683,7 @@ onMounted(loadSettings)
                     type="number"
                     class="h-9 pr-10 text-sm"
                     min="10"
-                    :disabled="!form.cache_trim_enabled"
+                    :disabled="isDemoMode || !form.cache_trim_enabled"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">MB</span>
                 </div>
@@ -679,7 +704,7 @@ onMounted(loadSettings)
               </div>
               <div class="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                 <div class="flex items-center gap-1.5">
-                  <Switch v-model="form.task_finished_trim" id="task-finished-trim" :disabled="!form.cache_trim_enabled" />
+                  <Switch v-model="form.task_finished_trim" id="task-finished-trim" :disabled="isDemoMode || !form.cache_trim_enabled" />
                   <Label for="task-finished-trim" class="text-xs cursor-pointer">自动</Label>
                 </div>
                 <Button
@@ -688,7 +713,8 @@ onMounted(loadSettings)
                   size="sm"
                   class="h-8 px-2.5 text-xs gap-1"
                   @click="handleTrimCache"
-                  :disabled="trimming"
+                  :disabled="isDemoMode || trimming"
+                  :title="isDemoMode ? '演示模式下禁止清理缓存' : '立即清理'"
                 >
                   <RefreshCw :class="['w-3 h-3', trimming ? 'animate-spin' : '']" />
                   {{ trimming ? '清理中...' : '立即清理' }}

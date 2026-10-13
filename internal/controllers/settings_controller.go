@@ -737,6 +737,11 @@ func (sc *SettingsController) GetSetting(c *gin.Context) {
 
 // GenerateSettingToken 为指定设置生成随机token
 func (sc *SettingsController) GenerateSettingToken(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止生成 Token")
+		return
+	}
+
 	section := c.Param("section")
 	key := c.Param("key")
 

@@ -17,11 +17,20 @@ import (
 
 // OidcStatus 供登录页判断是否展示 OIDC 登录按钮
 func (ac *AuthController) OidcStatus(c *gin.Context) {
+	if constant.DemoMode {
+		utils.Success(c, gin.H{"enabled": false})
+		return
+	}
 	utils.Success(c, gin.H{"enabled": ac.oidcConfig() != nil})
 }
 
 // OidcLogin 重定向到 IdP 授权端点（授权码 + PKCE）
 func (ac *AuthController) OidcLogin(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止使用 OIDC 单点登录")
+		return
+	}
+
 	cfg := ac.oidcConfig()
 	if cfg == nil {
 		utils.BadRequest(c, "OIDC 登录未启用")
@@ -51,6 +60,11 @@ func (ac *AuthController) OidcLogin(c *gin.Context) {
 
 // OidcCallback 校验 state、换取 id_token、绑定/创建本地账号并签发本系统 JWT
 func (ac *AuthController) OidcCallback(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止使用 OIDC 单点登录")
+		return
+	}
+
 	cfg := ac.oidcConfig()
 	if cfg == nil {
 		utils.BadRequest(c, "OIDC 登录未启用")

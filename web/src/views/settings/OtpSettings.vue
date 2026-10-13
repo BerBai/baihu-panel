@@ -170,6 +170,12 @@ onMounted(loadData)
     </CardHeader>
 
     <CardContent class="flex-1 flex flex-col justify-between px-5 pb-0 pt-0 space-y-4">
+      <!-- 演示模式警示条 -->
+      <div v-if="demoMode" class="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-xs">
+        <ShieldAlert class="h-4 w-4 shrink-0" />
+        <span>演示模式下已锁定两步验证绑定与配置操作。</span>
+      </div>
+
       <!-- 状态 1：未开启状态（展示防护评估与推荐） -->
       <template v-if="!otpEnabled && !showBindSection">
         <div class="space-y-3.5">

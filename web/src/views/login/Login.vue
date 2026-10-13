@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import { Loader2 } from 'lucide-vue-next'
+import { Loader2, Fingerprint } from 'lucide-vue-next'
 import { api } from '@/api'
 import { toast } from 'vue-sonner'
 import { setAuthCache } from '@/router'
@@ -256,9 +256,10 @@ function handleOidcLogin() {
               </div>
             </div>
             <Button type="button" variant="outline"
-              class="mt-4 w-full h-12 text-base font-semibold rounded-2xl"
+              class="mt-4 w-full h-12 text-base font-semibold rounded-2xl flex items-center justify-center gap-2 hover:bg-sky-500/5 hover:border-sky-500/40 transition-all shadow-sm"
               @click="handleOidcLogin" :disabled="loading">
-              使用 OIDC 单点登录
+              <Fingerprint class="w-5 h-5 text-sky-500 shrink-0" />
+              <span>使用 OIDC 单点登录</span>
             </Button>
           </div>
 

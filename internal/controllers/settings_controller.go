@@ -681,11 +681,16 @@ func (sc *SettingsController) GetSectionSettings(c *gin.Context) {
 		return
 	}
 	settings := sc.settingsService.GetSection(section)
-	utils.Success(c, settings)
+	utils.Success(c, maskOidcSection(section, settings))
 }
 
 // UpdateSectionSettings 批量更新指定 section 的设置
 func (sc *SettingsController) UpdateSectionSettings(c *gin.Context) {
+	if constant.DemoMode {
+		utils.BadRequest(c, "演示模式下禁止修改配置")
+		return
+	}
+
 	section := c.Param("section")
 	if section == "" {
 		utils.BadRequest(c, "参数错误")
@@ -697,6 +702,9 @@ func (sc *SettingsController) UpdateSectionSettings(c *gin.Context) {
 		utils.BadRequest(c, "参数错误")
 		return
 	}
+
+	// security 段：OIDC 客户端密钥按掩码/明文/清空分别处理
+	values = prepareOidcSection(section, values, sc.settingsService.Get(section, constant.KeyOidcClientSecret))
 
 	if err := sc.settingsService.SetSection(section, values); err != nil {
 		utils.ServerError(c, "更新失败")

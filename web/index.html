@@ -5,6 +5,30 @@
     <link rel="icon" href="data:," />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title></title>
+    <!-- 防首屏主题闪烁 (Anti-FOUC)：在浏览器绘制首屏前同步锁定暗色模式 -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('theme');
+          var isDark = t === 'dark' || ((!t || t === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (isDark) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <style>
+      html.dark {
+        color-scheme: dark;
+        background-color: #1a1a1a;
+      }
+      html:not(.dark) {
+        color-scheme: light;
+        background-color: #ffffff;
+      }
+    </style>
     <!-- 引入国内主流的 Google Fonts 加速 CDN (loli.net) 的 Noto Sans SC 字体 -->
     <link rel="stylesheet" href="https://fonts.loli.net/css2?family=Noto+Sans+SC:wght@100..900&display=swap" />
   </head>

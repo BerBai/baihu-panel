@@ -38,6 +38,18 @@ func ToolConcurrencyLimiter(limit int) server.ToolHandlerMiddleware {
 	}
 }
 
+// DemoModeToolLimiter 演示模式下拦截所有工具调用的中间件
+func DemoModeToolLimiter() server.ToolHandlerMiddleware {
+	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			if constant.DemoMode {
+				return mcp.NewToolResultError("演示模式下禁止调用 MCP 工具"), nil
+			}
+			return next(ctx, req)
+		}
+	}
+}
+
 // NewBaihuMCPServer 创建并初始化白虎面板的 MCP 服务实例
 func NewBaihuMCPServer(deps *Deps) *server.MCPServer {
 	deps = deps.EnsureDefaults()
@@ -52,7 +64,8 @@ func NewBaihuMCPServer(deps *Deps) *server.MCPServer {
 		server.WithRecovery(),
 	)
 
-	// 挂载并发控制中间件，严格限制同时执行工具的协程数上限（默认为 4）
+	// 挂载中间件：演示模式拦截与并发控制（默认为 4）
+	s.Use(DemoModeToolLimiter())
 	s.Use(ToolConcurrencyLimiter(DefaultMaxConcurrentToolExecutions))
 
 	// 注册各类领域工具

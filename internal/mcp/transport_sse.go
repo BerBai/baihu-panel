@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/mark3labs/mcp-go/server"
@@ -46,10 +47,26 @@ func RegisterOpenAPIMCPRoutes(g *gin.RouterGroup, deps *Deps) {
 	)
 
 	mcpGroup := g.Group("/mcp")
+	mcpGroup.Use(demoModeLimiter())
 	{
 		// 挂载连接数限流中间件，防止大量并发 SSE 长连接耗尽协程
 		mcpGroup.GET("/sse", sseSessionLimiter(), gin.WrapH(sseServer.SSEHandler()))
 		mcpGroup.POST("/messages", gin.WrapH(sseServer.MessageHandler()))
+	}
+}
+
+// demoModeLimiter 演示模式下禁止使用 MCP 协议及接口能力
+func demoModeLimiter() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if constant.DemoMode {
+			c.JSON(http.StatusForbidden, gin.H{
+				"code": http.StatusForbidden,
+				"msg":  "演示模式下已禁用 MCP 协议与远程连接能力",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
 	}
 }
 

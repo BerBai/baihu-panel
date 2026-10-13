@@ -193,6 +193,10 @@ const mcpConfigJson = computed(() => {
 })
 
 async function copyMcpSseUrl() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止使用 MCP 能力')
+    return
+  }
   if (!form.value.openapi_token) {
     toast.error('请先生成并保存 OpenAPI Token')
     return
@@ -206,6 +210,10 @@ async function copyMcpSseUrl() {
 }
 
 async function copyMcpConfigJson() {
+  if (isDemoMode.value) {
+    toast.error('演示模式下禁止使用 MCP 能力')
+    return
+  }
   if (!form.value.openapi_token) {
     toast.error('请先生成并保存 OpenAPI Token')
     return
@@ -397,7 +405,14 @@ onMounted(loadSettings)
                   <div class="flex items-center gap-1.5 min-w-0">
                     <Sparkles class="w-3.5 h-3.5 text-purple-500 shrink-0" />
                     <span class="text-xs font-semibold text-foreground">AI 客户端连接 (MCP)</span>
-                    <Badge variant="outline" class="font-normal text-[9px] px-1.5 py-0 h-4 border-purple-500/30 text-purple-600 dark:text-purple-400 shrink-0">
+                    <Badge
+                      v-if="isDemoMode"
+                      variant="destructive"
+                      class="text-[9px] px-1.5 py-0 h-4 font-normal shrink-0"
+                    >
+                      演示模式禁用
+                    </Badge>
+                    <Badge v-else variant="outline" class="font-normal text-[9px] px-1.5 py-0 h-4 border-purple-500/30 text-purple-600 dark:text-purple-400 shrink-0">
                       Cursor / Claude
                     </Badge>
                   </div>
@@ -410,15 +425,23 @@ onMounted(loadSettings)
                   </button>
                 </div>
 
+                <!-- 演示模式警示条 -->
+                <div v-if="isDemoMode" class="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-[11px]">
+                  <AlertTriangle class="h-3.5 w-3.5 shrink-0" />
+                  <span>演示模式下已禁用 MCP 远程协议连接与数据访问能力。</span>
+                </div>
+
                 <div class="space-y-1">
                   <Label class="text-[11px] text-muted-foreground flex items-center justify-between">
                     <span>SSE 远程连接 URL</span>
-                    <span v-if="!form.openapi_token" class="text-amber-500 text-[10px]">需先生成 Token</span>
+                    <span v-if="isDemoMode" class="text-destructive text-[10px]">演示模式下不可用</span>
+                    <span v-else-if="!form.openapi_token" class="text-amber-500 text-[10px]">需先生成 Token</span>
                   </Label>
                   <div class="flex items-center gap-1.5">
                     <Input
-                      :model-value="mcpSseUrl"
+                      :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : mcpSseUrl"
                       readonly
+                      :disabled="isDemoMode"
                       class="text-xs h-8 font-mono bg-muted/40 select-all flex-1 min-w-0"
                     />
                     <Button
@@ -427,7 +450,8 @@ onMounted(loadSettings)
                       size="sm"
                       class="h-8 px-2.5 shrink-0 text-xs gap-1"
                       @click="copyMcpSseUrl"
-                      :disabled="!form.openapi_token || !form.openapi_enabled"
+                      :disabled="isDemoMode || !form.openapi_token || !form.openapi_enabled"
+                      :title="isDemoMode ? '演示模式下禁止使用 MCP 能力' : '复制'"
                     >
                       <Copy class="w-3 h-3" />
                       复制
@@ -442,7 +466,8 @@ onMounted(loadSettings)
                     <button
                       type="button"
                       @click="copyMcpConfigJson"
-                      class="text-[10px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                      :disabled="isDemoMode"
+                      class="text-[10px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Copy class="w-2.5 h-2.5" />
                       复制配置 JSON

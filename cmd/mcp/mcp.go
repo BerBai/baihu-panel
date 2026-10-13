@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/engigu/baihu-panel/cmd/clibase"
+	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/logger"
 	internalmcp "github.com/engigu/baihu-panel/internal/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -33,6 +34,11 @@ func Run(args []string) {
 
 	if err := clibase.InitContext(true); err != nil {
 		fmt.Fprintf(os.Stderr, "初始化白虎环境失败: %v\n", err)
+		os.Exit(1)
+	}
+
+	if constant.DemoMode {
+		fmt.Fprintf(os.Stderr, "演示模式下禁止启动 MCP 命令行服务\n")
 		os.Exit(1)
 	}
 

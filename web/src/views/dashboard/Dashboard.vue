@@ -235,7 +235,7 @@ const renderLineChart = () => {
     ],
     chart: {
       type: 'line' as const,
-      height: 300,
+      height: 290,
       toolbar: { show: false },
       background: 'transparent',
       animations: {
@@ -269,7 +269,7 @@ const renderLineChart = () => {
       categories: sendStats.value.map(item => item.day.slice(5)),
       axisBorder: { show: false },
       axisTicks: { show: false },
-      labels: { style: { colors: textColor, fontSize: '12px', fontFamily: 'Inter, sans-serif' } },
+      labels: { style: { colors: textColor, fontSize: '11px', fontFamily: 'Inter, sans-serif' } },
       tooltip: { enabled: false }
     },
     yaxis: {
@@ -299,7 +299,7 @@ const renderLineChart = () => {
       strokeDashArray: 3,
       xaxis: { lines: { show: false } },
       yaxis: { lines: { show: true } },
-      padding: { top: 0, right: 5, bottom: 0, left: 0 }
+      padding: { top: 5, right: 5, bottom: 0, left: 0 }
     },
     legend: {
       position: 'top' as const,
@@ -376,7 +376,7 @@ const renderPieChart = () => {
     series: taskStats.value.map(item => item.count),
     chart: {
       type: 'donut' as const,
-      height: 280,
+      height: 275,
       toolbar: { show: false },
       background: 'transparent',
       animations: {
@@ -399,7 +399,7 @@ const renderPieChart = () => {
     plotOptions: {
       pie: {
         donut: {
-          size: '68%',
+          size: '70%',
           labels: {
             show: true,
             name: {
@@ -443,7 +443,7 @@ const renderPieChart = () => {
       style: { fontSize: '12px', fontFamily: 'Inter, sans-serif' },
       y: { formatter: (val: number) => val + ' 次' }
     },
-    responsive: [{ breakpoint: 768, options: { chart: { height: 260 }, legend: { position: 'bottom' } } }]
+    responsive: [{ breakpoint: 768, options: { chart: { height: 240 }, legend: { position: 'bottom' } } }]
   }
   pieChart = new ApexCharts(container as HTMLElement, options as any)
   pieChart.render()
@@ -582,10 +582,10 @@ onUnmounted(() => {
     <!-- 中部图表分析区域 -->
     <div class="grid gap-4 lg:grid-cols-10 items-stretch">
       <!-- 左侧：执行统计（经典折线图） -->
-      <Card class="lg:col-span-7 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col justify-between relative overflow-hidden">
+      <Card class="lg:col-span-7 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col relative overflow-hidden py-0">
         <!-- 顶部素雅极细微光条 -->
         <div class="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-sky-500/30 via-slate-400/20 to-transparent" />
-        <CardHeader class="pb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/40">
+        <CardHeader class="px-4 sm:px-5 pt-3.5 pb-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/40">
           <div class="space-y-0.5">
             <CardTitle class="text-sm sm:text-base flex items-center gap-2">
               <div class="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 shrink-0">
@@ -605,7 +605,7 @@ onUnmounted(() => {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent class="relative pt-4 pb-2 flex-1 min-h-[300px]">
+        <CardContent class="relative pt-2 pb-2.5 px-2 sm:px-4 flex-1 min-h-[285px]">
           <div id="stats-chart" class="w-full h-full"></div>
           <div v-if="!chartsLoaded"
             class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">
@@ -618,10 +618,10 @@ onUnmounted(() => {
       </Card>
 
       <!-- 右侧：任务占比（甜甜圈环形图） -->
-      <Card class="lg:col-span-3 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col justify-between relative overflow-hidden">
+      <Card class="lg:col-span-3 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col relative overflow-hidden py-0">
         <!-- 顶部素雅极细微光条 -->
         <div class="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-indigo-500/30 via-slate-400/20 to-transparent" />
-        <CardHeader class="pb-2 flex flex-row items-center justify-between gap-2 border-b border-border/40">
+        <CardHeader class="px-4 sm:px-5 pt-3.5 pb-2.5 flex flex-row items-center justify-between gap-2 border-b border-border/40">
           <div class="space-y-0.5">
             <CardTitle class="text-sm sm:text-base flex items-center gap-2">
               <div class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
@@ -635,7 +635,7 @@ onUnmounted(() => {
             Top 任务
           </Badge>
         </CardHeader>
-        <CardContent class="relative pt-4 pb-2 flex-1 min-h-[300px] flex items-center justify-center">
+        <CardContent class="relative pt-2 pb-2.5 px-4 flex-1 min-h-[285px] flex items-center justify-center">
           <div id="pie-chart" class="w-full h-full"></div>
           <div v-if="!chartsLoaded"
             class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">

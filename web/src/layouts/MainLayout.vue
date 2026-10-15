@@ -116,7 +116,7 @@ onMounted(() => {
     <!-- Application Card: The main floating surface -->
     <div
       class="flex h-full w-full bg-background relative transition-all duration-500 overflow-hidden
-             3xl:max-w-[2000px] 3xl:max-h-[92vh] 3xl:rounded-[2.5rem] 
+             3xl:max-w-[2000px] 3xl:max-h-[92vh] 3xl:rounded-[1.75rem] 
              3xl:shadow-[0_50px_100px_-20px_rgba(0,0,0,0.25),0_0_0_1px_rgba(255,255,255,0.05)]
              3xl:ring-1 3xl:ring-slate-900/5 dark:3xl:ring-white/10
              3xl:border 3xl:border-slate-200/60 dark:3xl:border-white/5">

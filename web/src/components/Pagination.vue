@@ -26,14 +26,6 @@ const currentPageSize = computed(() => props.pageSize || 10)
 
 const totalPages = computed(() => Math.ceil(props.total / currentPageSize.value) || 1)
 
-// 计算当前展示区间，如 "1-20"
-const currentRange = computed(() => {
-  if (props.total === 0) return '0'
-  const start = (props.page - 1) * currentPageSize.value + 1
-  const end = Math.min(props.page * currentPageSize.value, props.total)
-  return `${start}-${end}`
-})
-
 function prevPage() {
   if (props.page > 1) {
     emit('update:page', props.page - 1)
@@ -64,7 +56,6 @@ function handleSizeChange(val: any) {
     <div class="flex items-center gap-2">
       <span class="tabular-nums whitespace-nowrap text-[11px] text-muted-foreground font-['Inter',sans-serif]">
         共 <strong class="text-foreground font-semibold font-['Inter',sans-serif]">{{ total }}</strong> 条
-        <span class="hidden sm:inline text-muted-foreground/60 ml-0.5 text-[10px]">({{ currentRange }})</span>
       </span>
 
       <!-- 快捷每页条数切换 -->

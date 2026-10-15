@@ -13,9 +13,9 @@
 
 ## 快速接入配置
 
-白虎面板 MCP 服务原生支持 **Stdio（标准输入输出）** 与 **SSE（Server-Sent Events 远程 HTTP）** 两种连接协议。
+白虎面板 MCP 服务原生支持 **Stdio（标准输入输出）** 与 **远程网络 HTTP**（双传输协议并存：Streamable HTTP 与 HTTP + SSE）。
 
-### 方式一：本地客户端 Stdio 管道接入（推荐）
+### 方式一：本地客户端 Stdio 管道接入（推荐本地）
 
 适用于在本机运行的 AI 客户端（如 Claude Desktop、Cursor、Cline 等），直接调用白虎面板 CLI 的 `baihu mcp` 子命令。面板在启动 Stdio 模式时已自动隔离系统日志，确保标准输出通道纯净传输 JSON-RPC 报文。
 
@@ -48,11 +48,11 @@
 
 ---
 
-### 方式二：远程网络 Streamable HTTP 接入
+### 方式二：远程网络 Streamable HTTP 接入（推荐远程）
 
 适用于跨主机、Docker 容器部署或远程 Web AI Agent 接入。
 
-白虎面板全面采用 MCP 现行主流传输协议标准（**Streamable HTTP 单端点规范**，2025-03-26 规范）。单端点统一通信，支持即时 JSON-RPC 响应与渐进式流式结果，天然穿透企业网关与反向代理，无缝适配 Cursor、Claude Desktop、OpenCode 2、DSH、Cline 等全系现代客户端。
+白虎面板全面采用 MCP 现行主流传输协议标准（**Streamable HTTP 单端点规范**，2025-03-26 规范）。单端点统一通信，支持即时 JSON-RPC 响应与渐进式流式传输，会话基于请求头 `Mcp-Session-Id`，天然穿透企业网关与反向代理，无缝适配 Cursor、Claude Desktop、OpenCode 2、DSH、Cline 等全系现代客户端。
 
 - **统一服务地址**: `http://<面板IP>:<端口>/open2api/v1/mcp?token=YOUR_OPENAPI_TOKEN`
 
@@ -63,6 +63,26 @@
   "mcpServers": {
     "baihu": {
       "url": "http://127.0.0.1:8052/open2api/v1/mcp?token=sk-xxxxxxxxxxxxxxxxxxxx"
+    }
+  }
+}
+```
+
+---
+
+### 方式三：远程网络 HTTP + SSE 接入（兼容旧版客户端）
+
+白虎面板同时保留了 2024-11-05 规范的双端点 HTTP+SSE 传输通道，为仅支持旧版 SSE 握手的客户端提供无缝向下兼容：
+
+- **SSE 监听端点**: `http://<面板IP>:<端口>/open2api/v1/mcp/sse?token=YOUR_OPENAPI_TOKEN`
+- **消息发送端点**: `http://<面板IP>:<端口>/open2api/v1/mcp/messages`
+- **并发协程保护**: 内置连接限流器（默认最多支持 3 个长连接会话并发维持），防止海量空闲长连接耗尽系统协程。
+
+```json
+{
+  "mcpServers": {
+    "baihu": {
+      "url": "http://127.0.0.1:8052/open2api/v1/mcp/sse?token=sk-xxxxxxxxxxxxxxxxxxxx"
     }
   }
 }

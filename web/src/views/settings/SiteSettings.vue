@@ -182,19 +182,31 @@ function openMcpDocs() {
 }
 
 const showMcpSnippet = ref(false)
+const mcpProtocol = ref<'streamable' | 'sse'>('streamable')
 
-const mcpUrl = computed(() => {
+const mcpStreamableUrl = computed(() => {
   if (typeof window === 'undefined') return ''
   const base = window.location.origin
   const token = form.value.openapi_token || '<Token>'
   return `${base}/open2api/v1/mcp?token=${token}`
 })
 
+const mcpSseUrl = computed(() => {
+  if (typeof window === 'undefined') return ''
+  const base = window.location.origin
+  const token = form.value.openapi_token || '<Token>'
+  return `${base}/open2api/v1/mcp/sse?token=${token}`
+})
+
+const currentMcpUrl = computed(() => {
+  return mcpProtocol.value === 'streamable' ? mcpStreamableUrl.value : mcpSseUrl.value
+})
+
 const mcpConfigJson = computed(() => {
   return JSON.stringify({
     mcpServers: {
       "baihu": {
-        "url": mcpUrl.value
+        "url": currentMcpUrl.value
       }
     }
   }, null, 2)
@@ -209,9 +221,10 @@ async function copyMcpUrl() {
     toast.error('请先生成并保存 OpenAPI Token')
     return
   }
-  const success = await copyTextToClipboard(mcpUrl.value)
+  const success = await copyTextToClipboard(currentMcpUrl.value)
   if (success) {
-    toast.success('MCP 连接地址已复制到剪贴板')
+    const protoName = mcpProtocol.value === 'streamable' ? 'Streamable HTTP' : 'SSE'
+    toast.success(`MCP 连接地址 (${protoName}) 已复制到剪贴板`)
   } else {
     toast.error('复制失败，请手动复制')
   }
@@ -442,15 +455,53 @@ onMounted(loadSettings)
                   <span>演示模式下已禁用 MCP 远程协议连接与数据访问能力。</span>
                 </div>
 
+                <!-- 传输协议选择切换器 -->
+                <div class="flex items-center justify-between gap-2 pt-0.5">
+                  <div class="inline-flex p-0.5 rounded-lg bg-muted/60 border border-border/40 text-[10px]">
+                    <button
+                      type="button"
+                      @click="mcpProtocol = 'streamable'"
+                      :class="[
+                        'px-2 py-0.5 rounded-md font-medium transition-colors',
+                        mcpProtocol === 'streamable'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      ]"
+                    >
+                      Streamable HTTP (推荐)
+                    </button>
+                    <button
+                      type="button"
+                      @click="mcpProtocol = 'sse'"
+                      :class="[
+                        'px-2 py-0.5 rounded-md font-medium transition-colors',
+                        mcpProtocol === 'sse'
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      ]"
+                    >
+                      HTTP + SSE (兼容旧版)
+                    </button>
+                  </div>
+                  <span class="text-[10px] text-muted-foreground hidden sm:inline">
+                    {{ mcpProtocol === 'streamable' ? '单端点现行标准规范' : '传统双端点长连接' }}
+                  </span>
+                </div>
+
                 <div class="space-y-1">
                   <Label class="text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>远程连接 URL (Streamable HTTP)</span>
+                    <span>
+                      连接 URL
+                      <span class="font-mono text-[10px] text-purple-600 dark:text-purple-400">
+                        ({{ mcpProtocol === 'streamable' ? '/open2api/v1/mcp' : '/open2api/v1/mcp/sse' }})
+                      </span>
+                    </span>
                     <span v-if="isDemoMode" class="text-destructive text-[10px]">演示模式下不可用</span>
                     <span v-else-if="!form.openapi_token" class="text-amber-500 text-[10px]">需先生成 Token</span>
                   </Label>
                   <div class="flex items-center gap-1.5">
                     <Input
-                      :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : mcpUrl"
+                      :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : currentMcpUrl"
                       readonly
                       :disabled="isDemoMode"
                       class="text-xs h-8 font-mono bg-muted/40 select-all flex-1 min-w-0"

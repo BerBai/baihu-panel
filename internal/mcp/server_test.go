@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
@@ -626,9 +627,83 @@ func TestTaskParamNormalization(t *testing.T) {
 		t.Error("Normalized path should not be empty")
 	}
 }
+// 11. SSE 传输协议 (兼容旧规范) 集成测试与会话限流测试
+func TestSSETransportIntegration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
 
+	deps := InitDefaultDeps()
 
+	adminUser := models.User{
+		ID:       "admin_002",
+		Username: "admin",
+		Role:     constant.AdminRole,
+	}
+	database.DB.Create(&adminUser)
 
+	validToken := "sk-baihu-mcp-sse-token"
+	settingsSvc := services.NewSettingsService()
+	tokenCfg := vo.TokenConfig{
+		Enabled: true,
+		Token:   validToken,
+	}
+	tokenBytes, _ := json.Marshal(tokenCfg)
+	settingsSvc.Set(constant.SectionSite, constant.KeyOpenapiToken, string(tokenBytes))
+
+	r := gin.New()
+	v1 := r.Group("/open2api/v1")
+	v1.Use(middleware.OpenapiRequired())
+	RegisterOpenAPIMCPRoutes(v1, deps)
+
+	// A. 未携带 Token 请求 /open2api/v1/mcp/sse -> 401
+	reqUnauthorized, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
+	wUnauthorized := httptest.NewRecorder()
+	r.ServeHTTP(wUnauthorized, reqUnauthorized)
+	if wUnauthorized.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401 for unauthorized SSE request, got %d", wUnauthorized.Code)
+	}
+
+	// B. 携带 Token 请求 /open2api/v1/mcp/sse -> 验证返回 text/event-stream
+	reqAuthorized, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse?token="+validToken, nil)
+	wAuthorized := httptest.NewRecorder()
+
+	go r.ServeHTTP(wAuthorized, reqAuthorized)
+	time.Sleep(100 * time.Millisecond)
+
+	contentType := wAuthorized.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "text/event-stream") && wAuthorized.Code != http.StatusOK {
+		t.Errorf("Expected SSE content-type text/event-stream, got code=%d header=%s", wAuthorized.Code, contentType)
+	}
+}
+
+// 11.2 验证 SSE 会话最大并发连接协程限制 (超过 3 个活跃连接自动 429 熔断保护系统)
+func TestSSESessionLimiter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tempDir := setupTestDB(t)
+	defer os.RemoveAll(tempDir)
+
+	deps := InitDefaultDeps()
+	r := gin.New()
+	RegisterOpenAPIMCPRoutes(r.Group("/open2api/v1"), deps)
+
+	// 并发模拟占用 MaxActiveSSESessions 个连接
+	for i := 0; i < MaxActiveSSESessions; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
+		w := httptest.NewRecorder()
+		go r.ServeHTTP(w, req)
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	// 第 4 个连接发起请求，验证被 429 拦截
+	reqExceeded, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
+	wExceeded := httptest.NewRecorder()
+	r.ServeHTTP(wExceeded, reqExceeded)
+
+	if wExceeded.Code != http.StatusTooManyRequests {
+		t.Errorf("Expected 429 Too Many Requests when exceeding session limit, got %d", wExceeded.Code)
+	}
+}
 // 12. 声明式应用与应用商店生命周期工具测试
 func TestAppLifecycleTools(t *testing.T) {
 	tempDir := setupTestDB(t)

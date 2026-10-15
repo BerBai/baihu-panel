@@ -15,31 +15,50 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// OidcStatus 供登录页判断是否展示 OIDC 登录按钮
+// OidcStatus 供登录页判断是否展示 SSO (OIDC / OAuth 2.0) 登录按钮及显示名称
 func (ac *AuthController) OidcStatus(c *gin.Context) {
 	if constant.DemoMode {
 		utils.Success(c, gin.H{"enabled": false})
 		return
 	}
-	utils.Success(c, gin.H{"enabled": ac.oidcConfig() != nil})
+	cfg := ac.oidcConfig()
+	if cfg == nil {
+		utils.Success(c, gin.H{"enabled": false})
+		return
+	}
+
+	name := "OIDC"
+	if cfg.Type == constant.SSOTypeOAuth2 {
+		if cfg.DisplayName != "" {
+			name = cfg.DisplayName
+		} else {
+			name = "OAuth 2.0"
+		}
+	}
+
+	utils.Success(c, gin.H{
+		"enabled": true,
+		"type":    cfg.Type,
+		"name":    name,
+	})
 }
 
-// OidcLogin 重定向到 IdP 授权端点（授权码 + PKCE）
+// OidcLogin 重定向到 SSO 授权端点（授权码 + PKCE）
 func (ac *AuthController) OidcLogin(c *gin.Context) {
 	if constant.DemoMode {
-		utils.BadRequest(c, "演示模式下禁止使用 OIDC 单点登录")
+		utils.BadRequest(c, "演示模式下禁止使用单点登录")
 		return
 	}
 
 	cfg := ac.oidcConfig()
 	if cfg == nil {
-		utils.BadRequest(c, "OIDC 登录未启用")
+		utils.BadRequest(c, "单点登录未启用或配置不完整")
 		return
 	}
 
 	_, oauthCfg, err := ac.oidcProviderFor(c.Request.Context(), cfg)
 	if err != nil {
-		utils.ServerError(c, "无法连接 OIDC 提供方，请检查 Issuer 配置")
+		utils.ServerError(c, "无法连接单点登录提供方，请检查配置")
 		return
 	}
 
@@ -58,22 +77,22 @@ func (ac *AuthController) OidcLogin(c *gin.Context) {
 	c.Redirect(302, authURL)
 }
 
-// OidcCallback 校验 state、换取 id_token、绑定/创建本地账号并签发本系统 JWT
+// OidcCallback 校验 state、换取令牌/身份、绑定或创建本地账号并签发本系统 JWT
 func (ac *AuthController) OidcCallback(c *gin.Context) {
 	if constant.DemoMode {
-		utils.BadRequest(c, "演示模式下禁止使用 OIDC 单点登录")
+		utils.BadRequest(c, "演示模式下禁止使用单点登录")
 		return
 	}
 
 	cfg := ac.oidcConfig()
 	if cfg == nil {
-		utils.BadRequest(c, "OIDC 登录未启用")
+		utils.BadRequest(c, "单点登录未启用")
 		return
 	}
 
 	stateCookie, err := c.Cookie(oidcStateCookie)
 	if err != nil || stateCookie == "" {
-		utils.Unauthorized(c, "OIDC 会话已失效，请重新登录")
+		utils.Unauthorized(c, "单点登录会话已失效，请重新登录")
 		return
 	}
 	verifier, _ := c.Cookie(oidcVerifierCookie)
@@ -85,11 +104,11 @@ func (ac *AuthController) OidcCallback(c *gin.Context) {
 		baseState, postLogin = stateCookie[:i], stateCookie[i+1:]
 	}
 	if got := c.Query("state"); got == "" || got != baseState {
-		utils.Unauthorized(c, "OIDC state 校验失败")
+		utils.Unauthorized(c, "单点登录 state 校验失败")
 		return
 	}
 	if e := c.Query("error"); e != "" {
-		utils.Unauthorized(c, "OIDC 授权失败: "+e)
+		utils.Unauthorized(c, "第三方授权失败: "+e)
 		return
 	}
 	code := c.Query("code")
@@ -103,33 +122,50 @@ func (ac *AuthController) OidcCallback(c *gin.Context) {
 
 	verifierObj, oauthCfg, err := ac.oidcProviderFor(ctx, cfg)
 	if err != nil {
-		utils.ServerError(c, "无法连接 OIDC 提供方")
+		utils.ServerError(c, "无法连接单点登录提供方")
 		return
 	}
 
+	// 换取 Token：优先尝试带 PKCE verifier，若第三方不支持则降级重试普通 exchange
 	token, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
 	if err != nil {
-		ac.logOidcFailure(c, "", "授权码换取令牌失败")
+		token, err = oauthCfg.Exchange(ctx, code)
+	}
+	if err != nil {
+		ac.logOidcFailure(c, "", "授权码换取令牌失败: "+err.Error())
 		utils.Unauthorized(c, "授权码换取令牌失败")
 		return
 	}
-	rawIDToken, ok := token.Extra("id_token").(string)
-	if !ok || rawIDToken == "" {
-		utils.Unauthorized(c, "OIDC 未返回 id_token")
-		return
-	}
 
-	// 验签 + 校验 iss/aud/exp，JWKS 由 go-oidc 内部缓存
-	idToken, err := verifierObj.Verify(ctx, rawIDToken)
-	if err != nil {
-		ac.logOidcFailure(c, "", "id_token 校验失败")
-		utils.Unauthorized(c, "id_token 校验失败")
-		return
-	}
 	var claims oidcClaims
-	if err := idToken.Claims(&claims); err != nil {
-		utils.Unauthorized(c, "无法解析 OIDC 身份信息")
-		return
+	if cfg.Type == constant.SSOTypeOAuth2 {
+		// 通用 OAuth 2.0 模式：通过 Access Token 调用 Userinfo 接口获取用户信息
+		cObj, err := ac.fetchOAuth2Userinfo(ctx, cfg, token.AccessToken)
+		if err != nil {
+			ac.logOidcFailure(c, "", "获取用户信息失败: "+err.Error())
+			utils.Unauthorized(c, "获取用户信息失败: "+err.Error())
+			return
+		}
+		claims = *cObj
+	} else {
+		// 标准 OIDC 模式：验证 id_token 签名与 Claims
+		rawIDToken, ok := token.Extra("id_token").(string)
+		if !ok || rawIDToken == "" {
+			utils.Unauthorized(c, "OIDC 未返回 id_token")
+			return
+		}
+
+		// 验签 + 校验 iss/aud/exp，JWKS 由 go-oidc 内部缓存
+		idToken, err := verifierObj.Verify(ctx, rawIDToken)
+		if err != nil {
+			ac.logOidcFailure(c, "", "id_token 校验失败")
+			utils.Unauthorized(c, "id_token 校验失败")
+			return
+		}
+		if err := idToken.Claims(&claims); err != nil {
+			utils.Unauthorized(c, "无法解析 OIDC 身份信息")
+			return
+		}
 	}
 
 	user, created := ac.resolveOidcUser(cfg, &claims)

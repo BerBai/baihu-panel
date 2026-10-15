@@ -43,25 +43,27 @@
 
 ---
 
-## 二、 功能块 2：单点登录 (SSO / OIDC)
+## 二、 功能块 2：统一单点登录 (SSO / OIDC / OAuth 2.0)
 
-单点登录功能允许白虎面板直接作为标准客户端（Relying Party），无缝对接企业与私有内网的统一身份提供商（IdP），如 **Pocket ID**、**Keycloak**、**Authentik**、**Authelia** 等，实现免密登录、集中账号授权与合规审计。
+单点登录功能允许白虎面板直接作为标准客户端（Relying Party），不仅能无缝对接企业与私有内网的标准 OpenID Connect 身份源（IdP，如 **Pocket ID**、**Keycloak**、**Authentik**、**Authelia** 等），还**原生支持通用 OAuth 2.0 协议**（对接 **GitHub**、**Gitee**、**GitLab** 以及自建纯 OAuth 2.0 系统），实现免密登录、集中账号授权与安全审计。
 
-### 2.1 核心机制与安全设计
+### 2.1 核心机制与双模式设计
 
-- **标准授权码流程 + 强制 PKCE**：基于 `coreos/go-oidc/v3` 与 `golang.org/x/oauth2` 构建，强制要求 **PKCE (S256 挑战码)**，防范授权码在网络跳转过程中的中间人拦截与重放劫持。
-- **动态 JWKS 验签缓存**：自动请求提供方的 OpenID 发现端点 (`/.well-known/openid-configuration`) 动态拉取与缓存公钥，自动完成数字签名验签，无需手工繁琐维护公钥证书。
+- **双协议自由切换**：
+  - **标准 OIDC 模式（自动发现）**：基于 `coreos/go-oidc/v3` 构建，填入 `Issuer` 地址即可自动抓取发现文档与公钥集合，支持标准 JWT 格式的 `id_token` 验签。
+  - **通用 OAuth 2.0 模式（自定义端点）**：针对未实现完整 OIDC 发现文档的公网平台与轻量服务，支持自定义 `Authorize URL`、`Token URL` 和 `Userinfo URL`，并内置针对 GitHub / Gitee 等主流平台的字段智能解析与一键预设。
+- **强制 PKCE 安全防御**：全链路采用标准授权码流程并强制支持 **PKCE (S256 挑战码)**，防止授权码在网络跳转过程中的中间人重放劫持；针对老旧服务自动平滑兼容。
 - **状态参数 (State) 严密防伪**：授权生命周期使用的 `state` 与 `verifier` 严格存储在 `HttpOnly` Cookie 中（生命周期 10 分钟），校验完毕即刻销毁，伪造或篡改请求直接被 401 拦截。
-- **防开放重定向 (Open Redirect)**：回调跳回路径严格限制为站内合法相对路径（以 `/` 开头且非 `//`），杜绝网络钓鱼伪造跳转。
+- **防开放重定向 (Open Redirect)**：回调跳回路径严格限制为站内合法相对路径（以 `/` 开头且非 `//`），杜绝钓鱼伪造跳转。
 - **客户端密钥 (Client Secret) 密文落库**：前端回显始终采用掩码脱敏 (`********`)；保存时通过环境变量 `BAIHU_SECRET_KEY` 驱动的 **AES-GCM** 算法加密存储入库。
 
 ### 2.2 身份流转与建号策略
 
-当外部 IdP 授权成功重定向回白虎面板时，系统按照以下顺序定位并关联本地账号：
+当外部 IdP / OAuth2 平台授权成功重定向回白虎面板时，系统按照以下顺序定位并关联本地账号：
 
 ```mermaid
 graph TD
-    A[用户完成外部 IdP 认证] --> B{按 OIDC Subject 匹配}
+    A[用户完成外部 IdP/OAuth2 认证] --> B{按 Subject/ID 匹配}
     B -- 命中已绑定用户 --> C[生成本地凭据并登录成功]
     B -- 未匹配 --> D{按邮箱 Email 匹配存量本地账号}
     D -- 命中未绑定的存量账号 --> E[自动绑定关联并登录成功]
@@ -70,47 +72,51 @@ graph TD
     F -- 未开启 --> H[拦截登录: 403 当前身份未绑定账号]
 ```
 
-1. **按 Subject 唯一定位**：优先根据 IdP 下发的不可变用户唯一标识 (`sub`) 匹配。若已绑定，直接登录。
-2. **存量同名邮箱关联**：若为存量系统改造，外部 IdP 邮箱与本地已有尚未绑定的账号一致，系统自动完成关联绑定。
+1. **按 Subject / 用户唯一 ID 定位**：优先根据平台下发的唯一标识（如 OIDC 的不可变 `sub` 或 GitHub 的唯一数字 ID）匹配。若已绑定，直接登录。
+2. **存量同名邮箱关联**：若为存量系统改造，外部邮箱与本地已有尚未绑定的账号一致，系统自动完成关联绑定。
 3. **自动建号与权限隔离**：
-   - **开启自动建号**：无需管理员预先录入，首次登录根据 IdP 返回的用户名/邮箱自动生成本地账号，并分配指定的默认角色（普通用户 / 管理员）。
-   - **关闭自动建号**：陌生外部身份将被直接拒绝登录（提示 `当前 OIDC 身份未绑定任何账号，请联系管理员`），防止未受信任人员进入。
+   - **开启自动建号**：首次登录根据外部返回的用户名/邮箱自动生成本地账号，并分配指定的默认角色（普通用户 / 管理员）。
+   - **关闭自动建号**：陌生外部身份将被直接拒绝登录（提示 `当前身份未绑定任何账号，请联系管理员`），防止未受信任人员进入。
 
 ### 2.3 参数配置对照表
 
-在 **「系统设置」 > 「安全设置」 > 「OIDC 单点登录」** 卡片进行配置：
+在 **「系统设置」 > 「安全设置」 > 「统一单点登录」** 卡片进行配置：
 
 | 配置项 | 参数说明 | 参考范例 |
 | :--- | :--- | :--- |
-| **启用 OIDC 登录** | 总开关。开启后在登录页显示快捷登录按钮。 | 开关切换 |
-| **Issuer (发现文档地址)** | OIDC 身份提供商的完整基础访问 URL。 | `https://id.example.com` |
-| **Client ID** | IdP 颁发给白虎面板的客户端标识符。 | `baihu-panel` |
+| **启用单点登录** | 总开关。开启后在登录页显示快捷登录按钮。 | 开关切换 |
+| **协议模式选择** | 选择 **标准 OIDC** 或 **通用 OAuth 2.0**。 | `OIDC` / `OAuth 2.0` |
+| **Issuer (OIDC 模式)** | OIDC 身份提供商的完整基础访问 URL。 | `https://id.example.com` |
+| **授权端点 (OAuth2 模式)** | 第三方平台的授权跳转页面 URL。 | `https://github.com/login/oauth/authorize` |
+| **令牌端点 (OAuth2 模式)** | 授权码换取 Access Token 的接口 URL。 | `https://github.com/login/oauth/access_token` |
+| **用户信息端点 (OAuth2 模式)** | 通过 Access Token 获取用户信息的接口 URL。 | `https://api.github.com/user` |
+| **平台显示名称** | 在登录界面按钮中展示的名称。 | `GitHub` / `Gitee` / `企业 SSO` |
+| **Client ID** | 第三方平台颁发给白虎面板的客户端标识符。 | `baihu-panel` 或 OAuth App ID |
 | **Client Secret** | 客户端密钥。前端回显脱敏，留空表示不修改。 | `sec_xxxxxxxxxxxx` |
-| **回调地址 (Redirect URI)** | 授权完成后跳回面板的处理端点。需与 IdP 完全一致。 | `https://<面板地址>/api/v1/auth/oidc/callback` |
-| **附加 Scope (可选)** | 申请的扩展授权范围（逗号或空格分隔）。默认包含 `openid, profile, email`。 | `groups, roles` |
+| **回调地址 (Redirect URI)** | 授权完成后跳回面板的处理端点。需与第三方后台登记完全一致。 | `https://<面板地址>/api/v1/auth/oidc/callback` |
+| **授权范围 (Scope)** | 申请的权限。OIDC 默认含 `openid profile email`；OAuth2 推荐 `read:user user:email`。 | 逗号或空格分隔 |
 | **首次登录自动创建账号** | 陌生身份初次登录时是否允许自动注册。 | 开关切换 |
 | **自动创建账号的角色** | 自动建号时的初始权限分配。 | `普通用户` / `管理员` |
 
-### 2.4 主流 IdP 接入示例
+### 2.4 主流平台接入示例
 
-#### 对接 Pocket ID (推荐)
+#### 模式 A：对接 GitHub (通用 OAuth 2.0)
+1. 登录 GitHub，进入 **Settings > Developer settings > OAuth Apps**，点击 **New OAuth App**；
+2. 填写应用名称，在 **Authorization callback URL** 中填入白虎面板显示的回调地址：
+   ```text
+   https://panel.example.com/api/v1/auth/oidc/callback
+   ```
+3. 注册完成后生成 **Client secrets**，复制 **Client ID** 与 **Client Secret**；
+4. 进入白虎面板，在协议模式选择 **通用 OAuth 2.0**，点击「一键应用 GitHub 端点预设」，粘贴 Client ID 和 Client Secret 并保存；
+5. 保存后登录界面将直接呈现 **「使用 GitHub 单点登录」** 按钮！
+
+#### 模式 B：对接 Pocket ID (标准 OIDC，推荐)
 1. 登录 Pocket ID，在 **Clients** 页面新建客户端，填写应用名称及回调地址：
    ```text
    https://panel.example.com/api/v1/auth/oidc/callback
    ```
-2. 复制生成的 **Client ID** 与 **Client Secret**。
-3. 在白虎面板填入 Pocket ID 访问根地址作为 **Issuer**，并粘贴 Client ID 和 Secret 保存。
-
-#### 对接 Keycloak
-1. 进入 Keycloak 对应 Realm 的 **Clients**，创建 `OpenID Connect` 客户端（Client ID 如 `baihu-panel`）；
-2. 开启 **Client authentication**（Confidential 模式），**Valid redirect URIs** 填入白虎面板回调地址；
-3. 在 **Credentials** 页面复制 Client Secret；
-4. 面板中 **Issuer** 填写 `https://<Keycloak地址>/realms/<Realm名称>` 并保存。
-
-#### 对接 Authentik
-1. 在 Authentik 的 **Applications > Providers** 创建 `OAuth2/OpenID Provider`（类型为 Confidential）；
-2. 填入白虎面板的回调地址，并将其关联至对应的 Application；
-3. 复制生成的 Issuer URL、Client ID 及 Client Secret 填入白虎面板。
+2. 复制生成的 **Client ID** 与 **Client Secret**；
+3. 白虎面板选择 **标准 OIDC 模式**，填入 Pocket ID 根地址作为 **Issuer** 并保存即可。
 
 ---
 

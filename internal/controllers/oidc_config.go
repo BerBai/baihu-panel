@@ -32,6 +32,7 @@ type oidcProviderCache struct {
 var oidcCache = &oidcProviderCache{}
 
 type oidcConfig struct {
+	Type         string   // "oidc" 或 "oauth2"
 	Issuer       string
 	ClientID     string
 	ClientSecret string
@@ -39,49 +40,120 @@ type oidcConfig struct {
 	Scopes       []string
 	AutoCreate   bool
 	DefaultRole  string
+
+	// 通用 OAuth 2.0 专用字段
+	AuthURL     string
+	TokenURL    string
+	UserinfoURL string
+	DisplayName string
+	UserKey     string
 }
 
-// oidcConfig 读取并校验 OIDC 设置；未启用或配置不全时返回 nil
+// oidcConfig 读取并校验单点登录（OIDC / OAuth 2.0）设置；未启用或配置不全时返回 nil
 func (ac *AuthController) oidcConfig() *oidcConfig {
 	if ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcEnabled) != "true" {
 		return nil
 	}
-	issuer := strings.TrimRight(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcIssuer), "/")
+
+	ssoType := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcType)
+	if ssoType != constant.SSOTypeOAuth2 {
+		ssoType = constant.SSOTypeOIDC
+	}
+
 	clientID := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientID)
 	clientSecret := utils.DecryptSecret(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientSecret))
 	redirect := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcRedirectURL)
-	if issuer == "" || clientID == "" || redirect == "" {
+	if clientID == "" || redirect == "" {
 		return nil
-	}
-
-	// 允许管理员追加 scope（逗号或空格分隔），始终包含 openid
-	scopes := []string{oidc.ScopeOpenID, "profile", "email"}
-	for _, s := range strings.FieldsFunc(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcScopes), func(r rune) bool {
-		return r == ',' || r == ' ' || r == '\n'
-	}) {
-		if s = strings.TrimSpace(s); s != "" && s != oidc.ScopeOpenID {
-			scopes = append(scopes, s)
-		}
 	}
 
 	role := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcDefaultRole)
 	if role != constant.AdminRole {
 		role = constant.DefaultRole
 	}
+	autoCreate := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcAutoCreate) == "true"
+
+	if ssoType == constant.SSOTypeOIDC {
+		issuer := strings.TrimRight(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcIssuer), "/")
+		if issuer == "" {
+			return nil
+		}
+
+		// 允许管理员追加 scope（逗号或空格分隔），始终包含 openid
+		scopes := []string{oidc.ScopeOpenID, "profile", "email"}
+		for _, s := range strings.FieldsFunc(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcScopes), func(r rune) bool {
+			return r == ',' || r == ' ' || r == '\n'
+		}) {
+			if s = strings.TrimSpace(s); s != "" && s != oidc.ScopeOpenID {
+				scopes = append(scopes, s)
+			}
+		}
+
+		return &oidcConfig{
+			Type:         constant.SSOTypeOIDC,
+			Issuer:       issuer,
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			RedirectURL:  redirect,
+			Scopes:       scopes,
+			AutoCreate:   autoCreate,
+			DefaultRole:  role,
+		}
+	}
+
+	// 通用 OAuth 2.0 模式
+	authURL := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOauth2AuthURL))
+	tokenURL := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOauth2TokenURL))
+	userinfoURL := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOauth2UserinfoURL))
+	if authURL == "" || tokenURL == "" || userinfoURL == "" {
+		return nil
+	}
+
+	var scopes []string
+	for _, s := range strings.FieldsFunc(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcScopes), func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\n'
+	}) {
+		if s = strings.TrimSpace(s); s != "" {
+			scopes = append(scopes, s)
+		}
+	}
+
+	displayName := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOauth2Name))
+	userKey := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOauth2UserKey))
 
 	return &oidcConfig{
-		Issuer:       issuer,
+		Type:         constant.SSOTypeOAuth2,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		RedirectURL:  redirect,
 		Scopes:       scopes,
-		AutoCreate:   ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcAutoCreate) == "true",
+		AutoCreate:   autoCreate,
 		DefaultRole:  role,
+		AuthURL:      authURL,
+		TokenURL:     tokenURL,
+		UserinfoURL:  userinfoURL,
+		DisplayName:  displayName,
+		UserKey:      userKey,
 	}
 }
 
 // oidcProviderFor 返回可用的 provider / verifier / oauth2 配置（设置变更后自动重建）
 func (ac *AuthController) oidcProviderFor(ctx context.Context, cfg *oidcConfig) (*oidc.IDTokenVerifier, *oauth2.Config, error) {
+	// 通用 OAuth 2.0 模式：直接构建标准 oauth2.Config，不需要 OIDC Provider 与 JWKS 验签器
+	if cfg.Type == constant.SSOTypeOAuth2 {
+		oauthCfg := &oauth2.Config{
+			ClientID:     cfg.ClientID,
+			ClientSecret: cfg.ClientSecret,
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  cfg.AuthURL,
+				TokenURL: cfg.TokenURL,
+			},
+			RedirectURL: cfg.RedirectURL,
+			Scopes:      cfg.Scopes,
+		}
+		return nil, oauthCfg, nil
+	}
+
 	oidcCache.mu.Lock()
 	defer oidcCache.mu.Unlock()
 

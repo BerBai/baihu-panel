@@ -39,8 +39,12 @@ const (
 	// Security Settings Key 常量
 	KeySecret = "secret"
 
-	// OIDC 登录（Security Section）
+	// 单点登录 SSO（Security Section）
+	SSOTypeOIDC   = "oidc"
+	SSOTypeOAuth2 = "oauth2"
+
 	KeyOidcEnabled      = "oidc_enabled"
+	KeyOidcType         = "oidc_type" // "oidc" 或 "oauth2"（默认 "oidc"）
 	KeyOidcIssuer       = "oidc_issuer"
 	KeyOidcClientID     = "oidc_client_id"
 	KeyOidcClientSecret = "oidc_client_secret"
@@ -48,6 +52,13 @@ const (
 	KeyOidcScopes       = "oidc_scopes"
 	KeyOidcAutoCreate   = "oidc_auto_create"
 	KeyOidcDefaultRole  = "oidc_default_role"
+
+	// 通用 OAuth 2.0 专用配置
+	KeyOauth2AuthURL     = "oauth2_auth_url"     // 授权端点 Authorize URL
+	KeyOauth2TokenURL    = "oauth2_token_url"    // 令牌端点 Token URL
+	KeyOauth2UserinfoURL = "oauth2_userinfo_url" // 用户信息端点 Userinfo URL
+	KeyOauth2Name        = "oauth2_name"         // 平台显示名称（例如 "GitHub"、"Gitee"）
+	KeyOauth2UserKey     = "oauth2_user_key"     // 用户唯一标识键（缺省自动嗅探 sub / id / login）
 
 	// System Settings Key 常量
 	KeyInitialized = "initialized"

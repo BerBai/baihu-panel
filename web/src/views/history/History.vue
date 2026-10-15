@@ -492,10 +492,10 @@ watch(() => route.query, (newQuery) => {
       </div>
     </div>
 
-    <div class="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-190px)] lg:min-h-[480px]">
+    <div class="flex flex-col lg:flex-row gap-4 items-start">
       <!-- 日志列表 -->
-      <div class="flex-1 min-w-0 rounded-lg border bg-card overflow-hidden flex-col"
-        :class="selectedLog ? 'hidden lg:flex' : 'flex'">
+      <div class="flex-1 min-w-0 rounded-lg border bg-card overflow-hidden"
+        :class="selectedLog ? 'hidden lg:block' : 'block'">
         <!-- 小屏表头 -->
         <div
           class="flex sm:hidden items-center gap-1.5 px-3 h-[28px] border-b bg-muted/20 text-xs text-muted-foreground font-medium">
@@ -517,7 +517,7 @@ watch(() => route.query, (newQuery) => {
           <span class="w-10 shrink-0 text-center"></span>
         </div>
         <!-- 列表 -->
-        <div class="divide-y flex-1 overflow-y-auto custom-scrollbar">
+        <div class="divide-y text-sm">
           <div v-if="logs.length === 0" class="text-sm text-muted-foreground text-center py-8">
             暂无日志
           </div>
@@ -584,7 +584,7 @@ watch(() => route.query, (newQuery) => {
 
       <!-- 日志详情侧边栏 -->
       <div v-if="selectedLog"
-        class="w-full lg:w-[480px] rounded-lg border bg-card flex flex-col overflow-hidden shrink-0">
+        class="w-full lg:w-[480px] rounded-lg border bg-card flex flex-col overflow-hidden shrink-0 h-[calc(100vh-190px)] min-h-[480px] sticky top-4">
         <LogDetailCard 
           :log="selectedLog" 
           :content="decompressedOutput" 

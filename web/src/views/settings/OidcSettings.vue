@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -26,7 +26,11 @@ import {
   Sparkles,
   HelpCircle,
   Lock,
-  RotateCcw
+  RotateCcw,
+  Zap,
+  Layers,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-vue-next'
 
 const loading = ref(false)
@@ -35,9 +39,11 @@ const demoMode = ref(false)
 const showSecret = ref(false)
 const copied = ref(false)
 const showGuide = ref(false)
+const configExpanded = ref(false)
 
 const form = ref({
   enabled: false,
+  type: 'oidc', // 'oidc' | 'oauth2'
   issuer: '',
   client_id: '',
   client_secret: '',
@@ -45,6 +51,12 @@ const form = ref({
   scopes: '',
   auto_create: false,
   default_role: 'user',
+  // 通用 OAuth 2.0
+  oauth2_auth_url: '',
+  oauth2_token_url: '',
+  oauth2_userinfo_url: '',
+  oauth2_name: '',
+  oauth2_user_key: '',
 })
 
 // 系统自动推导的标准回调地址
@@ -60,15 +72,71 @@ const activeRedirectUrl = computed(() => {
   return form.value.redirect_url.trim() || defaultRedirectUrl.value
 })
 
-// 探测文档地址
+// 探测文档地址（OIDC 模式）
 const discoveryUrl = computed(() => {
+  if (form.value.type !== 'oidc') return ''
   const iss = form.value.issuer.trim()
   if (!iss || (!iss.startsWith('http://') && !iss.startsWith('https://'))) return ''
   return iss.replace(/\/+$/, '') + '/.well-known/openid-configuration'
 })
 
+// 常用 OAuth 2.0 平台预设模版
+interface OAuth2Preset {
+  name: string
+  displayName: string
+  authUrl: string
+  tokenUrl: string
+  userinfoUrl: string
+  scopes: string
+  userKey?: string
+}
+
+const oauth2Presets: OAuth2Preset[] = [
+  {
+    name: 'GitHub',
+    displayName: 'GitHub',
+    authUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    userinfoUrl: 'https://api.github.com/user',
+    scopes: 'read:user user:email',
+    userKey: 'id',
+  },
+  {
+    name: 'Gitee (码云)',
+    displayName: 'Gitee',
+    authUrl: 'https://gitee.com/oauth/authorize',
+    tokenUrl: 'https://gitee.com/oauth/token',
+    userinfoUrl: 'https://gitee.com/api/v5/user',
+    scopes: 'user_info emails',
+    userKey: 'id',
+  },
+  {
+    name: 'GitLab',
+    displayName: 'GitLab',
+    authUrl: 'https://gitlab.com/oauth/authorize',
+    tokenUrl: 'https://gitlab.com/oauth/token',
+    userinfoUrl: 'https://gitlab.com/api/v4/user',
+    scopes: 'read_user',
+    userKey: 'id',
+  },
+]
+
+function applyPreset(p: OAuth2Preset) {
+  form.value.oauth2_name = p.displayName
+  form.value.oauth2_auth_url = p.authUrl
+  form.value.oauth2_token_url = p.tokenUrl
+  form.value.oauth2_userinfo_url = p.userinfoUrl
+  form.value.scopes = p.scopes
+  if (p.userKey) form.value.oauth2_user_key = p.userKey
+  toast.success(`已自动填充 ${p.name} 端点配置`)
+}
+
 // 常见快捷 Scope 列表
-const commonScopes = ['groups', 'roles', 'offline_access']
+const commonScopes = computed(() => {
+  return form.value.type === 'oauth2'
+    ? ['read:user', 'user:email', 'profile', 'email']
+    : ['groups', 'roles', 'offline_access']
+})
 
 function addScope(scope: string) {
   const current = form.value.scopes.trim()
@@ -104,6 +172,7 @@ async function loadSection() {
     const res = await api.settings.getSection('security')
     form.value = {
       enabled: res.oidc_enabled === 'true',
+      type: res.oidc_type === 'oauth2' ? 'oauth2' : 'oidc',
       issuer: res.oidc_issuer || '',
       client_id: res.oidc_client_id || '',
       client_secret: res.oidc_client_secret || '',
@@ -111,9 +180,14 @@ async function loadSection() {
       scopes: res.oidc_scopes || '',
       auto_create: res.oidc_auto_create === 'true',
       default_role: res.oidc_default_role === 'admin' ? 'admin' : 'user',
+      oauth2_auth_url: res.oauth2_auth_url || '',
+      oauth2_token_url: res.oauth2_token_url || '',
+      oauth2_userinfo_url: res.oauth2_userinfo_url || '',
+      oauth2_name: res.oauth2_name || '',
+      oauth2_user_key: res.oauth2_user_key || '',
     }
   } catch (e: any) {
-    toast.error(e.message || '读取 OIDC 配置失败')
+    toast.error(e.message || '读取单点登录配置失败')
   } finally {
     loading.value = false
   }
@@ -121,19 +195,30 @@ async function loadSection() {
 
 async function save() {
   if (demoMode.value) {
-    toast.error('演示模式下禁止修改 OIDC 配置')
+    toast.error('演示模式下禁止修改单点登录配置')
     return
   }
 
-  if (form.value.enabled && (!form.value.issuer || !form.value.client_id)) {
-    toast.error('启用 OIDC 单点登录前，必须填写 Issuer 与 Client ID')
-    return
+  if (form.value.enabled) {
+    if (!form.value.client_id) {
+      toast.error('请填写 Client ID（客户端标识）')
+      return
+    }
+    if (form.value.type === 'oidc' && !form.value.issuer) {
+      toast.error('OIDC 模式下必须填写 Issuer（发现文档地址）')
+      return
+    }
+    if (form.value.type === 'oauth2' && (!form.value.oauth2_auth_url || !form.value.oauth2_token_url || !form.value.oauth2_userinfo_url)) {
+      toast.error('通用 OAuth 2.0 模式下必须完整填写授权、令牌与用户信息端点')
+      return
+    }
   }
 
   saving.value = true
   try {
     await api.settings.setSection('security', {
       oidc_enabled: form.value.enabled ? 'true' : 'false',
+      oidc_type: form.value.type,
       oidc_issuer: form.value.issuer.trim(),
       oidc_client_id: form.value.client_id.trim(),
       oidc_client_secret: form.value.client_secret,
@@ -141,13 +226,33 @@ async function save() {
       oidc_scopes: form.value.scopes.trim(),
       oidc_auto_create: form.value.auto_create ? 'true' : 'false',
       oidc_default_role: form.value.default_role,
+      oauth2_auth_url: form.value.oauth2_auth_url.trim(),
+      oauth2_token_url: form.value.oauth2_token_url.trim(),
+      oauth2_userinfo_url: form.value.oauth2_userinfo_url.trim(),
+      oauth2_name: form.value.oauth2_name.trim(),
+      oauth2_user_key: form.value.oauth2_user_key.trim(),
     })
-    toast.success('OIDC 单点登录配置已保存')
+    toast.success('单点登录配置已保存')
     await loadSection()
+    configExpanded.value = false
   } catch (e: any) {
     toast.error(e.message || '保存失败')
   } finally {
     saving.value = false
+  }
+}
+
+function handleToggleEnabled(val: boolean) {
+  form.value.enabled = val
+  if (val && !form.value.client_id) {
+    configExpanded.value = true
+  }
+}
+
+function toggleGuide() {
+  showGuide.value = !showGuide.value
+  if (showGuide.value) {
+    configExpanded.value = true
   }
 }
 
@@ -167,16 +272,16 @@ onMounted(() => {
 </script>
 
 <template>
-  <Card class="shadow-sm">
-    <!-- 头部：标题、状态与右上角集成开关 -->
-    <CardHeader class="pb-3.5 space-y-2">
-      <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2.5 min-w-0">
-          <div class="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 shrink-0">
-            <Fingerprint class="w-4 h-4" />
-          </div>
-          <CardTitle class="text-base font-semibold flex items-center gap-2 truncate">
-            <span>OIDC 单点登录</span>
+  <Card class="shadow-sm flex flex-col justify-between pt-4.5 pb-5">
+    <!-- 卡片头部：图标、标题、副标题与主开关 -->
+    <CardHeader class="pb-3 pt-0 px-5">
+      <div class="flex items-start justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2">
+            <CardTitle class="text-base flex items-center gap-2">
+              <Fingerprint class="w-4 h-4 text-sky-500" />
+              <span>统一单点登录 (SSO)</span>
+            </CardTitle>
             <Badge
               v-if="demoMode"
               variant="destructive"
@@ -189,276 +294,484 @@ onMounted(() => {
               variant="secondary"
               class="text-[10px] px-1.5 py-0 font-normal bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0"
             >
-              已开启
+              {{ form.type === 'oauth2' ? (form.oauth2_name || 'OAuth 2.0') : 'OIDC' }} 已激活
             </Badge>
-          </CardTitle>
+          </div>
+          <CardDescription class="text-xs leading-relaxed pt-0.5">
+            集成标准 OIDC 身份中心与通用 OAuth 2.0 平台，实现第三方免密快捷登录与账号审计。
+          </CardDescription>
         </div>
 
-        <!-- 右上角：帮助与主开关 -->
+        <!-- 右上角：对接指引与主开关 -->
         <div class="flex items-center gap-3 shrink-0">
           <button
             type="button"
-            @click="showGuide = !showGuide"
-            class="hidden sm:flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:underline"
+            @click="toggleGuide"
+            class="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:underline transition-colors"
           >
             <HelpCircle class="w-3.5 h-3.5" />
-            <span>{{ showGuide ? '收起指引' : '对接参考' }}</span>
+            <span>{{ showGuide ? '收起指引' : '对接指引' }}</span>
           </button>
           <div class="flex items-center gap-2 pl-3 border-l border-border/60">
             <Switch
-              v-model="form.enabled"
-              id="oidc-enabled"
+              :model-value="form.enabled"
+              @update:model-value="handleToggleEnabled"
+              id="sso-enabled"
               :disabled="demoMode || loading"
             />
-            <Label for="oidc-enabled" class="text-xs cursor-pointer select-none">
+            <Label for="sso-enabled" class="text-xs cursor-pointer select-none">
               {{ form.enabled ? '已启用' : '开启' }}
             </Label>
           </div>
         </div>
       </div>
-
-      <div class="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <span class="truncate">接入 Pocket ID、Keycloak、Authentik 等标准 OpenID Connect 身份源实现免密登录</span>
-        <button
-          type="button"
-          @click="showGuide = !showGuide"
-          class="sm:hidden flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:underline shrink-0"
-        >
-          <HelpCircle class="w-3.5 h-3.5" />
-          <span>{{ showGuide ? '收起' : '参考' }}</span>
-        </button>
-      </div>
-
-      <!-- 演示模式警示条 -->
-      <div
-        v-if="demoMode"
-        class="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-xs"
-      >
-        <AlertTriangle class="h-3.5 w-3.5 shrink-0" />
-        <span>演示模式下已锁定 OIDC 访问凭据与安全参数配置。</span>
-      </div>
-
-      <!-- 对接指引折叠面板 -->
-      <div
-        v-if="showGuide"
-        class="p-3 rounded-xl border bg-gradient-to-br from-sky-500/5 via-background to-purple-500/5 border-sky-500/25 space-y-2 text-xs"
-      >
-        <div class="flex items-center gap-1.5 font-semibold text-foreground">
-          <Sparkles class="w-3.5 h-3.5 text-sky-500" />
-          <span>常见 IdP 对接参考速查</span>
-        </div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-          <div class="p-1.5 px-2.5 rounded-lg bg-muted/40 border border-border/40">
-            <b class="text-foreground">Pocket ID:</b> Issuer 填 <code class="text-sky-600 dark:text-sky-400">https://id.domain.com</code>，Scope 留空
-          </div>
-          <div class="p-1.5 px-2.5 rounded-lg bg-muted/40 border border-border/40">
-            <b class="text-foreground">Authentik:</b> Issuer 填 <code class="text-sky-600 dark:text-sky-400">https://&lt;host&gt;/application/o/&lt;slug&gt;/</code>
-          </div>
-          <div class="p-1.5 px-2.5 rounded-lg bg-muted/40 border border-border/40">
-            <b class="text-foreground">Keycloak:</b> Issuer 填 <code class="text-sky-600 dark:text-sky-400">https://&lt;host&gt;/realms/&lt;realm&gt;</code>
-          </div>
-          <div class="p-1.5 px-2.5 rounded-lg bg-muted/40 border border-border/40">
-            <b class="text-foreground">重定向 URI:</b> 务必在 IdP 客户端中填入下方右侧的<b>回调地址</b>
-          </div>
-        </div>
-      </div>
     </CardHeader>
 
-    <CardContent class="space-y-3.5 pt-0">
-      <!-- 行 1：端点网络配置（双列对称：Issuer + 回调地址） -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <!-- 发现地址 -->
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
-            <Label class="text-xs font-medium text-foreground flex items-center gap-1">
-              <Globe class="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Issuer（发现文档地址）</span>
-              <span class="text-destructive">*</span>
-            </Label>
-            <a
-              v-if="discoveryUrl"
-              :href="discoveryUrl"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5"
-            >
-              <span>校验</span>
-              <ExternalLink class="w-2.5 h-2.5" />
-            </a>
-          </div>
-          <Input
-            v-model="form.issuer"
-            placeholder="https://id.example.com"
-            class="h-9 text-xs font-mono"
-            :disabled="demoMode || loading"
-          />
+    <CardContent class="flex-1 flex flex-col justify-between px-5 pb-0 pt-0 space-y-4">
+      <div class="space-y-3.5">
+        <!-- 演示模式警示条 -->
+        <div
+          v-if="demoMode"
+          class="flex items-center gap-2 p-3 rounded-xl bg-destructive/10 text-destructive text-xs"
+        >
+          <AlertTriangle class="h-4 w-4 shrink-0" />
+          <span>演示模式下已锁定单点登录凭据与安全参数配置。</span>
         </div>
 
-        <!-- 回调地址 (Redirect URI) 带内嵌复制 -->
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
-            <Label class="text-xs font-medium text-foreground flex items-center gap-1">
-              <span>回调地址（Redirect URI）</span>
-              <span class="text-[10px] text-muted-foreground font-normal">需在 IdP 严格登记</span>
-            </Label>
-            <button
-              v-if="form.redirect_url"
-              type="button"
-              @click="resetDefaultRedirectUrl"
-              class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
-              title="重置为默认自动推导地址"
+        <!-- 状态指示卡片（与上方卡片保持一致的高级状态面板，集成互联风格折叠/展开入口） -->
+        <div
+          class="p-3.5 rounded-xl border flex items-center justify-between transition-all"
+          :class="form.enabled
+            ? 'border-emerald-500/20 bg-emerald-500/5'
+            : 'border-border/70 bg-muted/20'"
+        >
+          <div class="flex items-center gap-3 min-w-0">
+            <div
+              class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+              :class="form.enabled
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                : 'bg-muted text-muted-foreground border border-border/60'"
             >
-              <RotateCcw class="w-2.5 h-2.5" />
-              <span>默认</span>
-            </button>
+              <Zap v-if="form.type === 'oauth2'" class="w-4 h-4" />
+              <Globe v-else class="w-4 h-4" />
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-xs font-bold text-foreground truncate">
+                  {{ form.enabled
+                    ? (form.type === 'oauth2' ? (form.oauth2_name || '通用 OAuth 2.0') : '标准 OpenID Connect')
+                    : '单点登录未启用' }}
+                </span>
+                <Badge
+                  variant="outline"
+                  class="text-[9px] px-1 py-0 h-4 shrink-0"
+                  :class="form.enabled
+                    ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : 'border-muted-foreground/30 text-muted-foreground'"
+                >
+                  {{ form.type === 'oauth2' ? 'OAuth 2.0' : 'OIDC' }}
+                </Badge>
+              </div>
+              <div class="text-[10px] text-muted-foreground pt-0.5 truncate">
+                {{ form.enabled
+                  ? (form.auto_create ? '首次登录将根据角色策略自动建号' : '仅允许已绑定存量账号的用户登入')
+                  : (configExpanded ? '请在下方配置第三方认证平台端点参数' : '点击右侧按钮展开配置或开启快捷单点登录') }}
+              </div>
+            </div>
           </div>
-          <div class="flex items-center gap-1.5">
-            <Input
-              v-model="form.redirect_url"
-              :placeholder="defaultRedirectUrl"
-              class="h-9 text-xs font-mono flex-1 min-w-0"
-              :disabled="demoMode || loading"
-            />
+
+          <!-- 右侧：在线状态与展开/收起按钮 -->
+          <div class="flex items-center gap-2.5 shrink-0 pl-2">
+            <div
+              v-if="form.enabled"
+              class="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>通道在线</span>
+            </div>
+            <div v-else class="hidden sm:block text-[11px] text-muted-foreground">
+              未配置
+            </div>
+
             <Button
-              type="button"
               variant="outline"
               size="sm"
-              class="h-9 px-2.5 shrink-0 text-xs gap-1 font-medium"
-              @click="copyRedirectUrl"
-              :title="'复制生效回调地址'"
+              class="text-xs h-7.5 px-2.5 gap-1 shadow-xs bg-background hover:bg-muted/70 transition-all"
+              @click="configExpanded = !configExpanded"
             >
-              <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
-              <Copy v-else class="w-3.5 h-3.5" />
-              <span>{{ copied ? '已复制' : '复制' }}</span>
+              <span>{{ configExpanded ? '收起配置' : '配置参数' }}</span>
+              <ChevronUp v-if="configExpanded" class="h-3.5 w-3.5" />
+              <ChevronDown v-else class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <!-- 折叠展开的配置区域（像互联模块一样可自由展开/收起） -->
+        <div v-if="configExpanded" class="space-y-3.5 pt-1 animate-in fade-in duration-200">
+          <!-- 对接指引折叠面板 -->
+          <div
+            v-if="showGuide"
+            class="p-3 rounded-xl border bg-gradient-to-br from-sky-500/5 via-background to-purple-500/5 border-sky-500/25 space-y-2 text-xs"
+          >
+            <div class="flex items-center gap-1.5 font-semibold text-foreground">
+              <Sparkles class="w-3.5 h-3.5 text-sky-500" />
+              <span>第三方单点登录对接速查</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+              <div class="p-2 rounded-lg bg-muted/40 border border-border/40">
+                <b class="text-foreground">标准 OIDC 模式:</b> Pocket ID、Keycloak、Authentik 等，只需填入 Issuer，发现文档自动嗅探。
+              </div>
+              <div class="p-2 rounded-lg bg-muted/40 border border-border/40">
+                <b class="text-foreground">通用 OAuth 2.0 模式:</b> GitHub、Gitee、GitLab 或自建服务，点击右侧预设按钮即可秒级填充端点。
+              </div>
+              <div class="p-2 rounded-lg bg-muted/40 border border-border/40 col-span-1 sm:col-span-2">
+                <b class="text-foreground">回调重定向地址 (Callback):</b> 必须在第三方应用管理后台严格登记本卡片显示的回调地址。
+              </div>
+            </div>
+          </div>
+
+          <!-- 协议模式切换与快捷预设条（一体化紧凑控制栏） -->
+          <div class="p-2.5 px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2">
+                <Layers class="w-4 h-4 text-sky-500 shrink-0" />
+                <span class="text-xs font-semibold text-foreground">认证协议:</span>
+              </div>
+              <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
+                <button
+                  type="button"
+                  @click="!demoMode && (form.type = 'oidc')"
+                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 text-xs select-none"
+                  :class="form.type === 'oidc' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                >
+                  <Globe class="w-3.5 h-3.5" />
+                  <span>标准 OIDC</span>
+                </button>
+                <button
+                  type="button"
+                  @click="!demoMode && (form.type = 'oauth2')"
+                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 text-xs select-none"
+                  :class="form.type === 'oauth2' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                >
+                  <Zap class="w-3.5 h-3.5" />
+                  <span>通用 OAuth 2.0</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- OAuth2 模式下右侧直接无缝展现快捷预设 -->
+            <div v-if="form.type === 'oauth2'" class="flex items-center gap-2 flex-wrap">
+              <span class="text-[11px] text-muted-foreground flex items-center gap-1">
+                <Sparkles class="w-3 h-3 text-amber-500" />
+                <span>快速套用:</span>
+              </span>
+              <div class="flex items-center gap-1.5">
+                <button
+                  v-for="p in oauth2Presets"
+                  :key="p.name"
+                  type="button"
+                  class="h-7 text-xs px-2.5 rounded-md border border-border/80 bg-background hover:bg-muted/80 hover:border-primary/50 text-foreground transition-all flex items-center gap-1 font-medium disabled:opacity-50"
+                  :disabled="demoMode || loading"
+                  @click="applyPreset(p)"
+                >
+                  <span>{{ p.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- OIDC 模式下右侧展现支持的身份源说明 -->
+            <div v-else class="text-[11px] text-muted-foreground flex items-center gap-1">
+              <span>支持 Pocket ID / Keycloak / Authentik 等</span>
+            </div>
+          </div>
+
+          <!-- OIDC 专有模式表单 -->
+          <div v-if="form.type === 'oidc'" class="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-0.5">
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                  <Globe class="w-3.5 h-3.5 text-muted-foreground" />
+                  <span>Issuer（发现文档地址）</span>
+                  <span class="text-destructive">*</span>
+                </Label>
+                <a
+                  v-if="discoveryUrl"
+                  :href="discoveryUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5"
+                >
+                  <span>检验发现文档</span>
+                  <ExternalLink class="w-2.5 h-2.5" />
+                </a>
+              </div>
+              <Input
+                v-model="form.issuer"
+                placeholder="https://id.example.com"
+                class="h-9 text-xs font-mono"
+                :disabled="demoMode || loading"
+              />
+            </div>
+
+            <!-- 回调地址 (Redirect URI) 带内嵌复制 -->
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between">
+                <Label class="text-xs font-medium text-foreground">回调重定向地址 (Redirect URI)</Label>
+                <button
+                  v-if="form.redirect_url"
+                  type="button"
+                  @click="resetDefaultRedirectUrl"
+                  class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                  title="重置为默认自动推导地址"
+                >
+                  <RotateCcw class="w-2.5 h-2.5" />
+                  <span>默认</span>
+                </button>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <Input
+                  v-model="form.redirect_url"
+                  :placeholder="defaultRedirectUrl"
+                  class="h-9 text-xs font-mono flex-1 min-w-0"
+                  :disabled="demoMode || loading"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-9 px-2.5 shrink-0 text-xs gap-1 font-medium"
+                  @click="copyRedirectUrl"
+                >
+                  <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
+                  <Copy v-else class="w-3.5 h-3.5" />
+                  <span>{{ copied ? '已复制' : '复制' }}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 通用 OAuth 2.0 专有模式表单 -->
+          <div v-else class="space-y-3.5 pt-0.5">
+            <!-- 端点三列并排 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+                  <span>授权端点 (Authorize URL)</span>
+                  <span class="text-destructive">*</span>
+                </Label>
+                <Input
+                  v-model="form.oauth2_auth_url"
+                  placeholder="https://github.com/login/oauth/authorize"
+                  class="h-9 text-xs font-mono"
+                  :disabled="demoMode || loading"
+                />
+              </div>
+
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+                  <span>令牌端点 (Token URL)</span>
+                  <span class="text-destructive">*</span>
+                </Label>
+                <Input
+                  v-model="form.oauth2_token_url"
+                  placeholder="https://github.com/login/oauth/access_token"
+                  class="h-9 text-xs font-mono"
+                  :disabled="demoMode || loading"
+                />
+              </div>
+
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+                  <span>用户信息端点 (Userinfo URL)</span>
+                  <span class="text-destructive">*</span>
+                </Label>
+                <Input
+                  v-model="form.oauth2_userinfo_url"
+                  placeholder="https://api.github.com/user"
+                  class="h-9 text-xs font-mono"
+                  :disabled="demoMode || loading"
+                />
+              </div>
+            </div>
+
+            <!-- 平台标识与回调 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground">
+                  显示名称 <span class="text-[10px] text-muted-foreground font-normal">（登录页按钮回显）</span>
+                </Label>
+                <Input
+                  v-model="form.oauth2_name"
+                  placeholder="例如 GitHub 或 Gitee"
+                  class="h-9 text-xs"
+                  :disabled="demoMode || loading"
+                />
+              </div>
+
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground">
+                  唯一用户标识 Key <span class="text-[10px] text-muted-foreground font-normal">（留空智能提取）</span>
+                </Label>
+                <Input
+                  v-model="form.oauth2_user_key"
+                  placeholder="例如 id 或 sub"
+                  class="h-9 text-xs font-mono"
+                  :disabled="demoMode || loading"
+                />
+              </div>
+
+              <div class="space-y-1.5">
+                <Label class="text-xs font-medium text-foreground">回调重定向地址</Label>
+                <div class="flex items-center gap-1.5">
+                  <Input
+                    v-model="form.redirect_url"
+                    :placeholder="defaultRedirectUrl"
+                    class="h-9 text-xs font-mono flex-1 min-w-0"
+                    :disabled="demoMode || loading"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="h-9 px-2.5 shrink-0 text-xs gap-1 font-medium"
+                    @click="copyRedirectUrl"
+                  >
+                    <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
+                    <Copy v-else class="w-3.5 h-3.5" />
+                    <span>{{ copied ? '已复制' : '复制' }}</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 全模式通用：客户端凭据（Client ID + Client Secret） -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-1">
+            <div class="space-y-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Client ID（客户端标识）</span>
+                <span class="text-destructive">*</span>
+              </Label>
+              <Input
+                v-model="form.client_id"
+                placeholder="例如 baihu-panel 或 OAuth App Client ID"
+                class="h-9 text-xs font-mono"
+                :disabled="demoMode || loading"
+              />
+            </div>
+
+            <div class="space-y-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                <Lock class="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Client Secret（客户端密钥）</span>
+              </Label>
+              <div class="relative">
+                <Input
+                  v-model="form.client_secret"
+                  :type="showSecret ? 'text' : 'password'"
+                  class="h-9 pr-8 text-xs font-mono"
+                  :disabled="demoMode || loading"
+                  placeholder="留空保持不变"
+                />
+                <button
+                  type="button"
+                  @click="showSecret = !showSecret"
+                  class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                  :title="showSecret ? '隐藏密钥' : '显示明文'"
+                >
+                  <EyeOff v-if="showSecret" class="w-3.5 h-3.5" />
+                  <Eye v-else class="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 全模式通用：附加 Scope -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <Label class="text-xs font-medium text-foreground">
+                授权范围 (Scope) <span class="text-[10px] text-muted-foreground font-normal">（以空格或逗号分隔）</span>
+              </Label>
+              <div class="flex items-center gap-1">
+                <button
+                  v-for="s in commonScopes"
+                  :key="s"
+                  type="button"
+                  @click="addScope(s)"
+                  :disabled="demoMode || loading"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border/50 transition-colors disabled:opacity-50"
+                >
+                  +{{ s }}
+                </button>
+              </div>
+            </div>
+            <Input
+              v-model="form.scopes"
+              :placeholder="form.type === 'oauth2' ? '例如 read:user user:email' : '例如 groups 或 roles，默认已含 openid profile email'"
+              class="h-9 text-xs font-mono"
+              :disabled="demoMode || loading"
+            />
+          </div>
+
+          <!-- 全模式通用：建号策略与默认角色 -->
+          <div class="p-2.5 px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div class="flex items-center gap-2.5">
+              <Switch
+                v-model="form.auto_create"
+                id="auto-create"
+                :disabled="demoMode || loading"
+              />
+              <div>
+                <Label for="auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
+                <p class="text-[10px] text-muted-foreground">未关联本地账号的陌生身份首次登录时自动开通</p>
+              </div>
+            </div>
+
+            <!-- 角色切换器（行内 Segmented Control） -->
+            <div v-if="form.auto_create" class="flex items-center gap-2 self-start sm:self-center">
+              <span class="text-[11px] text-muted-foreground shrink-0">分配角色:</span>
+              <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
+                <button
+                  type="button"
+                  @click="!demoMode && (form.default_role = 'user')"
+                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1 text-xs select-none"
+                  :class="form.default_role === 'user' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                >
+                  <User class="w-3.5 h-3.5" />
+                  <span>普通用户</span>
+                </button>
+                <button
+                  type="button"
+                  @click="!demoMode && (form.default_role = 'admin')"
+                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1 text-xs select-none"
+                  :class="form.default_role === 'admin' ? 'bg-amber-500 text-white font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
+                >
+                  <ShieldCheck class="w-3.5 h-3.5" />
+                  <span>管理员</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部操作按钮栏（与上方 PasswordSettings / OtpSettings 高度对齐） -->
+          <div class="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
+            <span class="text-[11px] text-muted-foreground">
+              单点登录配置保存后立即在登录页面生效
+            </span>
+            <Button
+              @click="save"
+              :disabled="saving || loading || demoMode"
+              class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5"
+            >
+              <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
+              <Save v-else class="h-3.5 w-3.5" />
+              <span>保存单点登录配置</span>
             </Button>
           </div>
         </div>
       </div>
-
-      <!-- 行 2：客户端凭据（双列对称：Client ID + Client Secret） -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-        <div class="space-y-1.5">
-          <Label class="text-xs font-medium text-foreground flex items-center gap-1">
-            <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
-            <span>Client ID（客户端标识）</span>
-            <span class="text-destructive">*</span>
-          </Label>
-          <Input
-            v-model="form.client_id"
-            placeholder="例如 baihu-panel"
-            class="h-9 text-xs font-mono"
-            :disabled="demoMode || loading"
-          />
-        </div>
-
-        <div class="space-y-1.5">
-          <Label class="text-xs font-medium text-foreground flex items-center gap-1">
-            <Lock class="w-3.5 h-3.5 text-muted-foreground" />
-            <span>Client Secret（客户端密钥）</span>
-          </Label>
-          <div class="relative">
-            <Input
-              v-model="form.client_secret"
-              :type="showSecret ? 'text' : 'password'"
-              class="h-9 pr-8 text-xs font-mono"
-              :disabled="demoMode || loading"
-              placeholder="留空保持不变"
-            />
-            <button
-              type="button"
-              @click="showSecret = !showSecret"
-              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-0.5"
-              :title="showSecret ? '隐藏密钥' : '显示明文'"
-            >
-              <EyeOff v-if="showSecret" class="w-3.5 h-3.5" />
-              <Eye v-else class="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 行 3：附加 Scope -->
-      <div class="space-y-1.5">
-        <div class="flex items-center justify-between">
-          <Label class="text-xs font-medium text-foreground">
-            附加 Scope <span class="text-[10px] text-muted-foreground font-normal">（默认已包含 openid profile email）</span>
-          </Label>
-          <div class="flex items-center gap-1">
-            <button
-              v-for="s in commonScopes"
-              :key="s"
-              type="button"
-              @click="addScope(s)"
-              :disabled="demoMode || loading"
-              class="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border/50 transition-colors disabled:opacity-50"
-            >
-              +{{ s }}
-            </button>
-          </div>
-        </div>
-        <Input
-          v-model="form.scopes"
-          placeholder="例如 groups 或 roles，多项以空格分隔"
-          class="h-9 text-xs font-mono"
-          :disabled="demoMode || loading"
-        />
-      </div>
-
-      <!-- 行 4：建号策略与默认角色（单行两端紧凑整合） -->
-      <div class="p-2.5 px-3 rounded-lg border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div class="flex items-center gap-2.5">
-          <Switch
-            v-model="form.auto_create"
-            id="auto-create"
-            :disabled="demoMode || loading"
-          />
-          <div>
-            <Label for="auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
-            <p class="text-[10px] text-muted-foreground">未关联本地账号的陌生身份首次登录时自动开通</p>
-          </div>
-        </div>
-
-        <!-- 角色切换器（行内 Segmented Control） -->
-        <div v-if="form.auto_create" class="flex items-center gap-2 self-start sm:self-center">
-          <span class="text-[11px] text-muted-foreground shrink-0">默认角色:</span>
-          <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
-            <button
-              type="button"
-              @click="!demoMode && (form.default_role = 'user')"
-              class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1 text-xs select-none"
-              :class="form.default_role === 'user' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-            >
-              <User class="w-3.5 h-3.5" />
-              <span>普通用户</span>
-            </button>
-            <button
-              type="button"
-              @click="!demoMode && (form.default_role = 'admin')"
-              class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1 text-xs select-none"
-              :class="form.default_role === 'admin' ? 'bg-amber-500 text-white font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
-            >
-              <ShieldCheck class="w-3.5 h-3.5" />
-              <span>管理员</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 底栏：保存按钮 -->
-      <div class="flex items-center justify-between pt-2 border-t border-border/50">
-        <span class="text-xs text-muted-foreground">
-          配置保存后即时在登录页生效
-        </span>
-        <Button
-          @click="save"
-          :disabled="saving || loading || demoMode"
-          class="h-8 px-4 text-xs font-medium gap-1.5 shadow-sm"
-        >
-          <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
-          <Save v-else class="h-3.5 w-3.5" />
-          <span>保存配置</span>
-        </Button>
-      </div>
     </CardContent>
   </Card>
 </template>
+

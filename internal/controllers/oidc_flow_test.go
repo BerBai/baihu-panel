@@ -9,8 +9,11 @@ import (
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
 	"github.com/engigu/baihu-panel/internal/models"
+	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/utils"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
 )
 
 // fullFlow 走完 login → callback
@@ -157,5 +160,143 @@ func TestOidcCallbackRejectsBadState(t *testing.T) {
 	router.ServeHTTP(cbW, cbReq)
 	if cbW.Code != http.StatusUnauthorized {
 		t.Fatalf("伪造 state 应返回 401，实际 %d (%s)", cbW.Code, cbW.Body.String())
+	}
+}
+
+// 验证各种流行平台（GitHub, Gitee, 通用平台）返回的用户信息解析
+func TestParseOAuth2Userinfo(t *testing.T) {
+	// 1. GitHub 风格 (id 为数字，login 为用户名)
+	ghJSON := []byte(`{"id": 583231, "login": "octocat", "name": "The Octocat", "email": "octocat@github.com"}`)
+	claims, err := parseOAuth2Userinfo(ghJSON, "")
+	if err != nil {
+		t.Fatalf("GitHub JSON 解析失败: %v", err)
+	}
+	if claims.Sub != "583231" || claims.PreferredUsername != "octocat" || claims.Email != "octocat@github.com" {
+		t.Errorf("GitHub 解析结果不符合预期: %+v", claims)
+	}
+
+	// 2. Gitee 风格 (无公开邮箱)
+	giteeJSON := []byte(`{"id": 99999, "login": "gitee_user", "name": "Gitee User"}`)
+	claimsGitee, err := parseOAuth2Userinfo(giteeJSON, "")
+	if err != nil {
+		t.Fatalf("Gitee JSON 解析失败: %v", err)
+	}
+	if claimsGitee.Sub != "99999" || claimsGitee.PreferredUsername != "gitee_user" {
+		t.Errorf("Gitee 解析结果不符合预期: %+v", claimsGitee)
+	}
+
+	// 3. 自定义字段提取 (例如特定企业自建平台使用 uid)
+	customJSON := []byte(`{"uid": "emp_10086", "user_name": "developer", "mail": "dev@corp.internal"}`)
+	claimsCustom, err := parseOAuth2Userinfo(customJSON, "uid")
+	if err != nil {
+		t.Fatalf("自定义 JSON 解析失败: %v", err)
+	}
+	if claimsCustom.Sub != "emp_10086" || claimsCustom.Email != "dev@corp.internal" {
+		t.Errorf("自定义解析结果不符合预期: %+v", claimsCustom)
+	}
+}
+
+// 模拟纯 OAuth 2.0 服务端（无 OIDC / 无 id_token），验证端到端单点登录全流程
+func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("开启内存库失败: %v", err)
+	}
+	database.DB = db
+	_ = db.AutoMigrate(&models.Setting{}, &models.User{})
+
+	// 1. 搭建一个模拟的纯 OAuth 2.0 授权服务器
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{
+			"access_token": "oauth2-mock-access-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	})
+	mux.HandleFunc("/api/user", func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		if authHeader != "Bearer oauth2-mock-access-token" {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		writeJSON(w, map[string]any{
+			"id":    1001,
+			"login": "github_coder",
+			"name":  "Coder",
+			"email": "coder@example.com",
+		})
+	})
+	oauthServer := httptest.NewServer(mux)
+	defer oauthServer.Close()
+
+	// 2. 配置通用 OAuth 2.0 参数
+	settings := services.NewSettingsService()
+	for k, v := range map[string]string{
+		constant.KeyOidcEnabled:      "true",
+		constant.KeyOidcType:         constant.SSOTypeOAuth2,
+		constant.KeyOidcClientID:     "mock-client-id",
+		constant.KeyOidcClientSecret: "mock-client-secret",
+		constant.KeyOidcRedirectURL:  "http://panel.local/api/v1/auth/oidc/callback",
+		constant.KeyOidcAutoCreate:   "true",
+		constant.KeyOidcDefaultRole:  constant.DefaultRole,
+		constant.KeyOauth2AuthURL:    oauthServer.URL + "/oauth/authorize",
+		constant.KeyOauth2TokenURL:   oauthServer.URL + "/oauth/token",
+		constant.KeyOauth2UserinfoURL: oauthServer.URL + "/api/user",
+		constant.KeyOauth2Name:       "GitHub",
+	} {
+		_ = settings.Set(constant.SectionSecurity, k, v)
+	}
+
+	ac := NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
+
+	router := gin.New()
+	router.GET("/api/v1/auth/oidc/status", ac.OidcStatus)
+	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
+	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
+
+	// 3. 验证 status 接口返回正确名称与类型
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/status", nil)
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+	if statusW.Code != http.StatusOK || !strings.Contains(statusW.Body.String(), "GitHub") {
+		t.Fatalf("OidcStatus 响应不符合预期: %s", statusW.Body.String())
+	}
+
+	// 4. 发起登录
+	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	if loginW.Code != http.StatusFound {
+		t.Fatalf("OAuth2 login 期望 302，实际 %d (%s)", loginW.Code, loginW.Body.String())
+	}
+	state := extractQuery(t, loginW.Header().Get("Location"), "state")
+
+	// 5. 模拟回调
+	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=mock_code&state="+state, nil)
+	for _, c := range loginW.Result().Cookies() {
+		cbReq.AddCookie(c)
+	}
+	cbW := httptest.NewRecorder()
+	router.ServeHTTP(cbW, cbReq)
+
+	if cbW.Code != http.StatusFound {
+		t.Fatalf("OAuth2 callback 期望 302 成功跳回，实际 %d (%s)", cbW.Code, cbW.Body.String())
+	}
+
+	// 6. 验证数据库中用户是否被正确建号
+	var user models.User
+	if err := database.DB.Where("oidc_subject = ?", "1001").First(&user).Error; err != nil {
+		t.Fatalf("未成功通过 OAuth2 创建用户: %v", err)
+	}
+	if user.Username != "github_coder" || user.Email != "coder@example.com" {
+		t.Errorf("创建的用户属性不符合预期: %+v", user)
+	}
+
+	// 7. 验证是否成功下发 JWT 会话 Cookie
+	token := findCookie(cbW, constant.CookieName)
+	if token == "" {
+		t.Fatal("OAuth2 登录成功后未下发认证 Cookie")
 	}
 }

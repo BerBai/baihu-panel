@@ -4,6 +4,11 @@ import './assets/index.css'
 import 'vue-sonner/style.css'
 import App from './App.vue'
 import router from './router'
+import { isWindowsPlatform } from './windows/platform'
+
+if (typeof document !== 'undefined' && isWindowsPlatform()) {
+  document.documentElement.classList.add('is-windows')
+}
 
 window.addEventListener('vite:preloadError', () => {
   console.log('Detected vite preload error. Reloading page...')

@@ -2,10 +2,13 @@
 @import "tw-animate-css";
 @import "@fontsource-variable/inter/index.css";
 
-/* 建立 Inter 与 Inter Variable 别名映射，确保 Canvas 与 CSS 均能无缝匹配 */
+/* 建立 Inter 与 Inter Variable 别名映射，确保 CSS、Tailwind 与各组件均能直接使用 Inter */
 @font-face {
   font-family: 'Inter';
-  src: local('Inter Variable');
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2-variations'),
+       url('@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2') format('woff2-variations'),
+       local('Inter Variable'),
+       local('Inter');
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -33,6 +36,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: 'Inter', 'Inter Variable', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -105,12 +109,12 @@
   --sidebar-border: #e5e7eb;
   --sidebar-ring: #9ca3af;
   
-  /* 字体栈定义 - 优先使用 Inter Variable 以获得最佳的可变字体支持 */
-  --font-main: 'Inter Variable', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  /* 字体栈定义 - 优先使用 Inter 与 Inter Variable 以获得最佳现代无衬线西文与符号呈现 */
+  --font-main: 'Inter', 'Inter Variable', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
 }
 
 .is-windows {
-  --font-main: 'Inter Variable', 'Inter', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
+  --font-main: 'Inter', 'Inter Variable', 'Noto Sans SC', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans CN", sans-serif;
 }
 
 /* OKLCH support targeting modern browsers */

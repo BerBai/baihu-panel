@@ -24,6 +24,8 @@ const requireOtp = ref(false)
 const otpPendingToken = ref('')
 const otpCode = ref('')
 const oidcEnabled = ref(false)
+const ssoName = ref('OIDC')
+const ssoType = ref('oidc')
 
 // 从 localStorage 加载缓存的站点设置
 function loadCachedSettings() {
@@ -149,11 +151,13 @@ onMounted(() => {
   loadOidcStatus()
 })
 
-// 查询是否启用 OIDC 单点登录，启用则展示按钮
+// 查询是否启用单点登录，启用则展示对应平台的登录按钮
 async function loadOidcStatus() {
   try {
     const res = await api.auth.oidcStatus()
     oidcEnabled.value = !!res?.enabled
+    ssoType.value = res?.type || 'oidc'
+    ssoName.value = res?.name || (ssoType.value === 'oauth2' ? 'OAuth 2.0' : 'OIDC')
   } catch {
     oidcEnabled.value = false
   }
@@ -245,7 +249,7 @@ function handleOidcLogin() {
             </div>
           </form>
 
-          <!-- OIDC 单点登录 -->
+          <!-- 单点登录 (OIDC / OAuth 2.0) -->
           <div v-if="oidcEnabled && !requireOtp" class="mt-6">
             <div class="relative">
               <div class="absolute inset-0 flex items-center">
@@ -259,7 +263,7 @@ function handleOidcLogin() {
               class="mt-4 w-full h-12 text-base font-semibold rounded-2xl flex items-center justify-center gap-2 hover:bg-sky-500/5 hover:border-sky-500/40 transition-all shadow-sm"
               @click="handleOidcLogin" :disabled="loading">
               <Fingerprint class="w-5 h-5 text-sky-500 shrink-0" />
-              <span>使用 OIDC 单点登录</span>
+              <span>使用 {{ ssoName }} 单点登录</span>
             </Button>
           </div>
 

@@ -9,7 +9,7 @@ import TextOverflow from '@/components/TextOverflow.vue'
 import TagInput from '@/components/TagInput.vue'
 import { api, type EnvVar } from '@/api'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ENV_TYPE } from '@/constants'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +21,7 @@ import SecretAuthDialog from './components/SecretAuthDialog.vue'
 import { formatDateTime } from '@/utils/date'
 
 const route = useRoute()
-const { pageSize } = useSiteSettings()
+const { pageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_envs_page_size', 10)
 
 const envVars = ref<EnvVar[]>([])
 const showValues = ref<Record<string, boolean>>({})
@@ -93,6 +93,12 @@ watch(activeTab, (val) => {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+  loadEnvVars()
+}
+
+function handlePageSizeChange(newSize: number) {
+  persistPageSize(newSize)
+  currentPage.value = 1
   loadEnvVars()
 }
 
@@ -438,11 +444,15 @@ onMounted(() => {
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 分页 -->
-    <div class="mt-4">
-      <Pagination :total="total" :page="currentPage" @update:page="handlePageChange" />
+      <!-- 分页 -->
+      <Pagination
+        :total="total"
+        :page="currentPage"
+        :page-size="pageSize"
+        @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
+      />
     </div>
 
     <EditEnvDialog ref="editDialogRef" @saved="loadEnvVars" />

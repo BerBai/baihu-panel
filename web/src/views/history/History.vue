@@ -14,14 +14,14 @@ import { api, type TaskLog } from '@/api'
 import LogDetailCard from '@/components/LogDetailCard.vue'
 import BaihuDialog from '@/components/ui/BaihuDialog.vue'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import TextOverflow from '@/components/TextOverflow.vue'
 import StatusDot from '@/components/StatusDot.vue'
 import { useEventBus } from '@/composables/useEventBus'
 import { formatDateTime, formatDuration } from '@/utils/date'
 
 const route = useRoute()
-const { pageSize } = useSiteSettings()
+const { pageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_history_page_size', 10)
 
 const logs = ref<TaskLog[]>([])
 const selectedLog = ref<TaskLog | null>(null)
@@ -166,6 +166,12 @@ function handleDateChange() {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+  loadLogs()
+}
+
+function handlePageSizeChange(newSize: number) {
+  persistPageSize(newSize)
+  currentPage.value = 1
   loadLogs()
 }
 
@@ -567,7 +573,13 @@ watch(() => route.query, (newQuery) => {
           </div>
         </div>
         <!-- 分页 -->
-        <Pagination :total="total" :page="currentPage" @update:page="handlePageChange" />
+        <Pagination
+          :total="total"
+          :page="currentPage"
+          :page-size="pageSize"
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
       </div>
 
       <!-- 日志详情侧边栏 -->

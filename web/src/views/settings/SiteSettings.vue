@@ -291,24 +291,14 @@ onMounted(loadSettings)
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">系统常规配置</Label>
-              <div class="grid grid-cols-2 gap-3">
-                <div class="relative">
-                  <Input
-                    v-model="form.page_size"
-                    type="number"
-                    class="h-9 pr-12 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">条/页</span>
-                </div>
-                <div class="relative">
-                  <Input
-                    v-model="form.cookie_days"
-                    type="number"
-                    class="h-9 pr-14 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">天过期</span>
-                </div>
+              <Label class="text-xs font-medium text-foreground">会话保持天数 (Cookie 过期时间)</Label>
+              <div class="relative">
+                <Input
+                  v-model="form.cookie_days"
+                  type="number"
+                  class="h-9 pr-14 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">天过期</span>
               </div>
             </div>
           </CardContent>

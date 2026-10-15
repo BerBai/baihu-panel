@@ -217,5 +217,8 @@ const emit = defineEmits<{
         />
       </div>
     </div>
+
+    <!-- 底部嵌入式分页栏插槽 -->
+    <slot name="pagination" />
   </div>
 </template>

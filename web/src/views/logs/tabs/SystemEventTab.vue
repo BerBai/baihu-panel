@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import Pagination from '@/components/Pagination.vue'
 import BaihuDialog from '@/components/ui/BaihuDialog.vue'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import { useEventBus } from '@/composables/useEventBus'
 import { LOG_EVENTS } from '@/constants'
 import { formatDateTime } from '@/utils/date'
@@ -21,7 +21,7 @@ const props = defineProps<{
     }
 }>()
 
-const { pageSize } = useSiteSettings()
+const { pageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_system_event_logs_page_size', 10)
 
 const logs = ref<AppLog[]>([])
 const selectedLogId = ref<string | null>(null)
@@ -58,6 +58,12 @@ async function fetchLogs() {
 
 function handlePageChange(index: number) {
     currentPage.value = index
+    fetchLogs()
+}
+
+function handlePageSizeChange(newSize: number) {
+    persistPageSize(newSize)
+    currentPage.value = 1
     fetchLogs()
 }
 
@@ -251,7 +257,14 @@ function onDialogClose(open: boolean) {
                 </div>
             </div>
 
-            <Pagination :total="total" :page="currentPage" @update:page="handlePageChange" />
+            <!-- 分页 -->
+            <Pagination
+                :total="total"
+                :page="currentPage"
+                :page-size="pageSize"
+                @update:page="handlePageChange"
+                @update:page-size="handlePageSizeChange"
+            />
         </div>
 
         <BaihuDialog v-model:open="detailDialogProps.open" :title="detailDialogProps.title" @update:open="onDialogClose">

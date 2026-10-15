@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-vue-next'
 import TextOverflow from '@/components/TextOverflow.vue'
 import { api, LOG_CATEGORY } from '@/api'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import { useEventBus } from '@/composables/useEventBus'
 import { LOG_EVENTS } from '@/constants'
 import BaihuDialog from '@/components/ui/BaihuDialog.vue'
@@ -15,7 +15,7 @@ const props = defineProps<{
     username: string
 }>()
 
-const { pageSize } = useSiteSettings()
+const { pageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_login_logs_page_size', 10)
 
 interface LoginLog {
     id: string
@@ -90,6 +90,12 @@ async function loadLogs() {
 
 function handlePageChange(page: number) {
     currentPage.value = page
+    loadLogs()
+}
+
+function handlePageSizeChange(newSize: number) {
+    persistPageSize(newSize)
+    currentPage.value = 1
     loadLogs()
 }
 
@@ -210,7 +216,13 @@ defineExpose({
                 </div>
             </div>
             <!-- 分页 -->
-            <Pagination :total="total" :page="currentPage" @update:page="handlePageChange" />
+            <Pagination
+                :total="total"
+                :page="currentPage"
+                :page-size="pageSize"
+                @update:page="handlePageChange"
+                @update:page-size="handlePageSizeChange"
+            />
         </div>
 
         <!-- IP 地理位置弹窗 -->

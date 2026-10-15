@@ -19,7 +19,7 @@ import AppShareDialog from './components/dialogs/AppShareDialog.vue'
 import { X } from 'lucide-vue-next'
 import { api, type Agent, type Task, type TaskLog } from '@/api'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import { useSelection } from '@/composables/useSelection'
 import { useEventBus } from '@/composables/useEventBus'
 import { useRouter, useRoute } from 'vue-router'
@@ -35,12 +35,9 @@ export interface TaskView {
 
 const router = useRouter()
 const route = useRoute()
-const { pageSize } = useSiteSettings()
 
-// 独立每页条数持久化 (响应 Issue 192 自定义条数)
-const localPageSizeKey = 'bhp_tasks_page_size'
-const storedPageSize = parseInt(localStorage.getItem(localPageSizeKey) || '', 10)
-const customPageSize = ref<number>(storedPageSize || pageSize.value || 10)
+// 独立每页条数持久化
+const { pageSize: customPageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_tasks_page_size', 10)
 
 // 核心列表与 Agent 数据
 const tasks = ref<Task[]>([])
@@ -166,8 +163,7 @@ function handlePageChange(page: number) {
 }
 
 function handlePageSizeChange(newSize: number) {
-  customPageSize.value = newSize
-  localStorage.setItem(localPageSizeKey, String(newSize))
+  persistPageSize(newSize)
   currentPage.value = 1
   clearSelection()
   loadTasks()
@@ -1011,16 +1007,18 @@ watch(() => route.query.type, (newVal: any) => {
       @share-app="openShareApp"
       @toggle-select="toggleSelect"
       @toggle-all="toggleAll"
-    />
-
-    <!-- 分页 (支持自定义每页条数) -->
-    <Pagination
-      :total="total"
-      :page="currentPage"
-      :page-size="customPageSize"
-      @update:page="handlePageChange"
-      @update:page-size="handlePageSizeChange"
-    />
+    >
+      <template #pagination>
+        <!-- 分页 (支持自定义每页条数) -->
+        <Pagination
+          :total="total"
+          :page="currentPage"
+          :page-size="customPageSize"
+          @update:page="handlePageChange"
+          @update:page-size="handlePageSizeChange"
+        />
+      </template>
+    </TaskList>
 
     <!-- 底部悬浮批量操作栏 -->
     <FloatingBatchBar

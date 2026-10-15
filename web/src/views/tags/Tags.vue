@@ -7,12 +7,12 @@ import Pagination from '@/components/Pagination.vue'
 import { Plus, Pencil, Trash2, Search, Tag, X, RefreshCw, Layers, Terminal, Variable, GitBranch, ExternalLink } from 'lucide-vue-next'
 import { api, type TagItem, type TagResourceItem } from '@/api'
 import { toast } from 'vue-sonner'
-import { useSiteSettings } from '@/composables/useSiteSettings'
+import { usePageSize } from '@/composables/usePageSize'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { formatDateTime } from '@/utils/date'
 
-const { pageSize } = useSiteSettings()
+const { pageSize, handlePageSizeChange: persistPageSize } = usePageSize('bhp_tags_page_size', 10)
 
 const tags = ref<TagItem[]>([])
 const loading = ref(false)
@@ -65,6 +65,12 @@ watch(activeTab, () => {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+  loadTags()
+}
+
+function handlePageSizeChange(newSize: number) {
+  persistPageSize(newSize)
+  currentPage.value = 1
   loadTags()
 }
 
@@ -416,7 +422,9 @@ onMounted(() => {
       <Pagination
         :page="currentPage"
         :total="total"
+        :page-size="pageSize"
         @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
       />
     </div>
 

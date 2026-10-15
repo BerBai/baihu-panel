@@ -100,6 +100,7 @@ type TaskBatchUpdateFields struct {
 	Languages          models.TaskLanguages `json:"languages,omitempty"`
 	Timeout            *int                 `json:"timeout,omitempty"`
 	Tags               *string              `json:"tags,omitempty"`
+	TagMode            *string              `json:"tag_mode,omitempty"`
 	PreCommand         *string              `json:"pre_command,omitempty"`
 	PostCommand        *string              `json:"post_command,omitempty"`
 	AgentID            *string              `json:"agent_id,omitempty"`
@@ -108,6 +109,7 @@ type TaskBatchUpdateFields struct {
 	RandomRange        *int                 `json:"random_range,omitempty"`
 	CleanConfig        *string              `json:"clean_config,omitempty"`
 	Envs               *string              `json:"envs,omitempty"`
+	UnifiedConfigPatch map[string]any       `json:"unified_config_patch,omitempty"`
 }
 
 // TaskBatchUpdateFilter 批量更新的筛选条件

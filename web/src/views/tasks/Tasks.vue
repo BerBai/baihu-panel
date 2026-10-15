@@ -11,6 +11,8 @@ import LogViewer from '@/views/history/LogViewer.vue'
 import XTerminal from '@/components/XTerminal.vue'
 import TaskHeader from './components/TaskHeader.vue'
 import TaskList from './components/TaskList.vue'
+import FloatingBatchBar from './components/FloatingBatchBar.vue'
+import TaskBatchSettingsDialog from './components/dialogs/TaskBatchSettingsDialog.vue'
 import TaskDeleteDialog from './components/dialogs/TaskDeleteDialog.vue'
 import TaskExportDialog from './components/dialogs/TaskExportDialog.vue'
 import AppShareDialog from './components/dialogs/AppShareDialog.vue'
@@ -18,6 +20,7 @@ import { X } from 'lucide-vue-next'
 import { api, type Agent, type Task, type TaskLog } from '@/api'
 import { toast } from 'vue-sonner'
 import { useSiteSettings } from '@/composables/useSiteSettings'
+import { useSelection } from '@/composables/useSelection'
 import { useEventBus } from '@/composables/useEventBus'
 import { useRouter, useRoute } from 'vue-router'
 import { TASK_TYPE, TASK_STATUS } from '@/constants'
@@ -34,12 +37,34 @@ const router = useRouter()
 const route = useRoute()
 const { pageSize } = useSiteSettings()
 
+// 独立每页条数持久化 (响应 Issue 192 自定义条数)
+const localPageSizeKey = 'bhp_tasks_page_size'
+const storedPageSize = parseInt(localStorage.getItem(localPageSizeKey) || '', 10)
+const customPageSize = ref<number>(storedPageSize || pageSize.value || 10)
+
 // 核心列表与 Agent 数据
 const tasks = ref<Task[]>([])
 const agents = ref<Agent[]>([])
 const loading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
+
+// 通用多选状态机
+const {
+  selectedIds,
+  selectedCount,
+  selectedItems,
+  isAllSelected,
+  isIndeterminate,
+  selectionTypeMeta,
+  toggle: toggleSelect,
+  toggleAll,
+  clear: clearSelection
+} = useSelection(tasks)
+
+// 统一批量设置弹窗状态
+const showBatchSettingsDialog = ref(false)
+const isBatchSettingsQueryMode = ref(false)
 
 // 排序与筛选
 const sortBy = ref('created_at')
@@ -115,7 +140,7 @@ async function loadTasks() {
   try {
     const res = await api.tasks.list({
       page: currentPage.value,
-      page_size: pageSize.value,
+      page_size: customPageSize.value,
       name: filterName.value || undefined,
       tags: filterTags.value || undefined,
       type: filterType.value === 'all' ? undefined : filterType.value,
@@ -136,6 +161,15 @@ async function loadTasks() {
 
 function handlePageChange(page: number) {
   currentPage.value = page
+  clearSelection()
+  loadTasks()
+}
+
+function handlePageSizeChange(newSize: number) {
+  customPageSize.value = newSize
+  localStorage.setItem(localPageSizeKey, String(newSize))
+  currentPage.value = 1
+  clearSelection()
   loadTasks()
 }
 
@@ -149,6 +183,7 @@ function handleSearch() {
   if (searchTimer) clearTimeout(searchTimer)
   searchTimer = setTimeout(() => {
     currentPage.value = 1
+    clearSelection()
     loadTasks()
   }, 300)
 }
@@ -158,6 +193,7 @@ function handleTypeChange(clearSource = true) {
     filterSourceId.value = ''
   }
   currentPage.value = 1
+  clearSelection()
 
   const currentQueryType = (route.query.type as string) || ''
   const targetType = (filterType.value === 'all' || !filterType.value) ? '' : filterType.value
@@ -183,6 +219,7 @@ function toggleSort(field: string) {
     order.value = 'desc'
   }
   currentPage.value = 1
+  clearSelection()
   loadTasks()
 }
 
@@ -190,6 +227,7 @@ function clearAgentFilter() {
   filterAgentId.value = null
   router.replace({ query: {} })
   currentPage.value = 1
+  clearSelection()
   loadTasks()
 }
 
@@ -458,7 +496,7 @@ function confirmDelete(id: string) {
 }
 
 function confirmBatchDelete() {
-  if (total.value === 0) return
+  if (total.value === 0 && selectedCount.value === 0) return
   showBatchDeleteDialog.value = true
 }
 
@@ -488,13 +526,19 @@ async function batchDeleteTasks() {
   if (isDeleting.value) return
   isDeleting.value = true
   try {
-    const res = await api.tasks.batchDeleteByQuery({
-      name: filterName.value || undefined,
-      tags: filterTags.value || undefined,
-      type: filterType.value === 'all' ? undefined : filterType.value,
-      agent_id: filterAgentId.value || undefined
-    })
-    toast.success(`成功删除 ${res.count} 个任务`)
+    if (selectedCount.value > 0) {
+      const res = await api.tasks.batchDelete(selectedIds.value)
+      toast.success(`成功删除选中的 ${res.count} 个任务`)
+      clearSelection()
+    } else {
+      const res = await api.tasks.batchDeleteByQuery({
+        name: filterName.value || undefined,
+        tags: filterTags.value || undefined,
+        type: filterType.value === 'all' ? undefined : filterType.value,
+        agent_id: filterAgentId.value || undefined
+      })
+      toast.success(`成功删除 ${res.count} 个任务`)
+    }
     await loadTasks()
     showBatchDeleteDialog.value = false
   } catch {
@@ -503,6 +547,32 @@ async function batchDeleteTasks() {
     isDeleting.value = false
   }
 }
+
+async function batchToggleTasks(enabled: boolean) {
+  if (selectedCount.value === 0) return
+  try {
+    await Promise.all(
+      selectedItems.value.map(t => api.tasks.update(t.id, { ...t, enabled }))
+    )
+    toast.success(enabled ? `已启用选中的 ${selectedCount.value} 个任务` : `已禁用选中的 ${selectedCount.value} 个任务`)
+    clearSelection()
+    loadTasks()
+  } catch {
+    toast.error('批量更新状态失败')
+  }
+}
+
+function openBatchSettings(isQuery: boolean = false) {
+  isBatchSettingsQueryMode.value = isQuery
+  showBatchSettingsDialog.value = true
+}
+
+const currentQueryFilter = computed(() => ({
+  name: filterName.value || undefined,
+  tags: filterTags.value || undefined,
+  type: filterType.value === 'all' ? undefined : filterType.value,
+  agent_id: filterAgentId.value || undefined
+}))
 
 async function runTask(id: string) {
   if (executingTaskId.value) return
@@ -560,16 +630,6 @@ async function handleTaskDepInstall(task: Task) {
     }
   } catch (err: any) {
     toast.error(err.message || '获取依赖安装命令失败')
-  }
-}
-
-function openBatchUpdate() {
-  editingTask.value = { timeout: 30 }
-  showBatchUpdateDialog.value = true
-  if (filterType.value === TASK_TYPE.REPO) {
-    showRepoDialog.value = true
-  } else {
-    showTaskDialog.value = true
   }
 }
 
@@ -912,8 +972,6 @@ watch(() => route.query.type, (newVal: any) => {
       @type-change="handleTypeChange"
       @refresh="loadTasks"
       @clear-agent-filter="clearAgentFilter"
-      @open-batch-update="openBatchUpdate"
-      @confirm-batch-delete="confirmBatchDelete"
       @open-create-task="openCreate"
       @open-create-agent-sync="openCreateAgentSync"
       @open-create-repo="openCreateRepo"
@@ -928,12 +986,15 @@ watch(() => route.query.type, (newVal: any) => {
       :tasks="tasks"
       :total="total"
       :current-page="currentPage"
-      :page-size="pageSize"
+      :page-size="customPageSize"
       :filter-type="filterType"
       :sort-by="sortBy"
       :order="order"
       :executing-task-id="executingTaskId"
       :agent-map="agentMap"
+      :selected-ids="selectedIds"
+      :is-all-selected="isAllSelected"
+      :is-indeterminate="isIndeterminate"
       @toggle-sort="toggleSort"
       @run-task="runTask"
       @view-logs="viewLogs"
@@ -948,10 +1009,43 @@ watch(() => route.query.type, (newVal: any) => {
       @open-export-dialog="openExportDialog"
       @confirm-delete="confirmDelete"
       @share-app="openShareApp"
+      @toggle-select="toggleSelect"
+      @toggle-all="toggleAll"
     />
 
-    <!-- 分页 -->
-    <Pagination :total="total" :page="currentPage" @update:page="handlePageChange" />
+    <!-- 分页 (支持自定义每页条数) -->
+    <Pagination
+      :total="total"
+      :page="currentPage"
+      :page-size="customPageSize"
+      @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange"
+    />
+
+    <!-- 底部悬浮批量操作栏 -->
+    <FloatingBatchBar
+      :selected-count="selectedCount"
+      :selected-types="selectionTypeMeta.types"
+      :is-mixed="selectionTypeMeta.isMixed"
+      :is-all-selected="isAllSelected"
+      :is-indeterminate="isIndeterminate"
+      :total-in-page="tasks.length"
+      @open-batch-settings="openBatchSettings(false)"
+      @batch-toggle="batchToggleTasks"
+      @confirm-batch-delete="confirmBatchDelete"
+      @clear="clearSelection"
+      @toggle-all="toggleAll"
+    />
+
+    <!-- 统一批量参数设置弹窗 -->
+    <TaskBatchSettingsDialog
+      v-model:open="showBatchSettingsDialog"
+      :selected-tasks="selectedItems"
+      :selected-ids="selectedIds"
+      :is-query-mode="isBatchSettingsQueryMode"
+      :query-filter="currentQueryFilter"
+      @saved="() => { clearSelection(); loadTasks(); }"
+    />
 
     <!-- 普通任务弹窗 -->
     <TaskDialog v-model:open="showTaskDialog" :task="editingTask" :is-edit="isEdit" :is-batch="showBatchUpdateDialog" @saved="loadTasks" />
@@ -978,6 +1072,7 @@ watch(() => route.query.type, (newVal: any) => {
       v-model:open-delete="showDeleteDialog"
       v-model:open-batch-delete="showBatchDeleteDialog"
       :target-task="tasks.find(t => t.id === deleteTaskId)"
+      :batch-count="selectedCount"
       :loading="isDeleting"
       @confirm-delete="deleteTask"
       @confirm-batch-delete="batchDeleteTasks"

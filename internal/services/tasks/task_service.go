@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -543,8 +544,29 @@ func (ts *TaskService) BatchUpdateTasks(req vo.TaskBatchUpdateReq) (int64, []str
 
 		// 6. 更新标签
 		if fields.Tags != nil {
-			relation.DataRelation.SaveTags(task.ID, constant.RelationTypeTaskTag, *fields.Tags)
-			task.Tags = *fields.Tags
+			finalTags := *fields.Tags
+			if fields.TagMode != nil && *fields.TagMode == "append" {
+				existingTags := relation.DataRelation.LoadTags([]string{task.ID}, constant.RelationTypeTaskTag)[task.ID]
+				tagSet := make(map[string]bool)
+				var merged []string
+				for _, t := range existingTags {
+					t = strings.TrimSpace(t)
+					if t != "" && !tagSet[strings.ToLower(t)] {
+						tagSet[strings.ToLower(t)] = true
+						merged = append(merged, t)
+					}
+				}
+				for _, t := range strings.Split(*fields.Tags, ",") {
+					t = strings.TrimSpace(t)
+					if t != "" && !tagSet[strings.ToLower(t)] {
+						tagSet[strings.ToLower(t)] = true
+						merged = append(merged, t)
+					}
+				}
+				finalTags = strings.Join(merged, ",")
+			}
+			relation.DataRelation.SaveTags(task.ID, constant.RelationTypeTaskTag, finalTags)
+			task.Tags = finalTags
 			selectCols = append(selectCols, "Tags")
 		}
 
@@ -570,6 +592,35 @@ func (ts *TaskService) BatchUpdateTasks(req vo.TaskBatchUpdateReq) (int64, []str
 		if fields.Envs != nil {
 			relation.DataRelation.SaveRelations(task.ID, constant.RelationTypeTaskEnv, *fields.Envs)
 			task.Envs = models.BigText(*fields.Envs)
+		}
+
+		// 9. 批量更新 UnifiedConfigPatch (如全量环境变量注入 task_all_envs 等)
+		if len(fields.UnifiedConfigPatch) > 0 {
+			var currentConfig map[string]any
+			if len(task.UnifiedConfig) > 0 {
+				_ = json.Unmarshal([]byte(task.UnifiedConfig), &currentConfig)
+			}
+			if currentConfig == nil {
+				currentConfig = make(map[string]any)
+			}
+			for k, v := range fields.UnifiedConfigPatch {
+				if subPatch, ok := v.(map[string]any); ok {
+					subExisting, _ := currentConfig[k].(map[string]any)
+					if subExisting == nil {
+						subExisting = make(map[string]any)
+					}
+					for subK, subV := range subPatch {
+						subExisting[subK] = subV
+					}
+					currentConfig[k] = subExisting
+				} else {
+					currentConfig[k] = v
+				}
+			}
+			if b, err := json.Marshal(currentConfig); err == nil {
+				task.UnifiedConfig = models.BigText(b)
+				selectCols = append(selectCols, "UnifiedConfig")
+			}
 		}
 
 		database.DB.Model(&task).Select(selectCols).Updates(&task)

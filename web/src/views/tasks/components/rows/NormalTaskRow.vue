@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +26,8 @@ const props = defineProps<{
   pageSize: number
   executingTaskId?: string | null
   agentMap: Record<string, Agent>
+  selected?: boolean
+  hasSelection?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +39,7 @@ const emit = defineEmits<{
   'depInstall': [task: Task]
   'duplicate': [task: Task]
   'delete': [id: string]
+  'toggleSelect': [id: string]
 }>()
 
 function getExecutorName(task: Task): string {
@@ -91,14 +95,33 @@ function getShortLangName(name: string): string {
 <template>
   <div>
     <!-- ========== 1. 大屏/中屏 (Desktop/Tablet >= 640px) ========== -->
-    <div class="hidden sm:flex items-center gap-2 px-4 py-1.5 hover:bg-muted/30 transition-colors">
+    <div
+      class="hidden sm:flex items-center gap-2 px-4 py-1.5 transition-colors group"
+      :class="selected ? 'bg-primary/[0.07] border-l-2 border-primary' : 'hover:bg-muted/30'"
+    >
       <StatusDot
         :state="task.running_status === 'running' ? 'running' : (task.running_status === 'queued' || task.running_status === 'pending' ? 'pending' : 'none')"
         :title="task.running_status === 'running' ? '运行中' : (task.running_status === 'queued' || task.running_status === 'pending' ? '排队中' : '')"
       />
 
-      <div class="w-12 shrink-0 text-muted-foreground tabular-nums text-[11px]">
-        #{{ total - (currentPage - 1) * pageSize - index }}
+      <!-- 序号列 / 复选框 (同位替换：平时显示 #序号，悬停或激活多选时变身为复选框) -->
+      <div class="w-12 shrink-0 flex items-center tabular-nums text-[11px]">
+        <Checkbox
+          v-if="selected || hasSelection"
+          :checked="selected"
+          class="shrink-0"
+          @update:checked="$emit('toggleSelect', task.id)"
+        />
+        <template v-else>
+          <span class="text-muted-foreground group-hover:hidden truncate">
+            #{{ total - (currentPage - 1) * pageSize - index }}
+          </span>
+          <Checkbox
+            :checked="false"
+            class="shrink-0 hidden group-hover:flex"
+            @update:checked="$emit('toggleSelect', task.id)"
+          />
+        </template>
       </div>
 
       <span class="w-8 shrink-0 flex justify-center" :title="task.type === TASK_TYPE.AGENT_SYNC_SCRIPT ? 'Agent 脚本同步' : '普通脚本任务'">
@@ -110,7 +133,15 @@ function getShortLangName(name: string): string {
       <div class="w-44 lg:w-56 shrink-0 flex flex-col justify-center gap-0.5 overflow-hidden">
         <div class="flex items-center gap-1.5 overflow-hidden">
           <span class="font-medium truncate cursor-help flex-1 min-w-0" :title="task.name">{{ task.name }}</span>
-          <Pin v-if="task.pin_type === 'top'" class="h-3 w-3 text-primary fill-primary shrink-0 rotate-45" />
+          <span
+            v-if="task.pin_type === 'top'"
+            class="shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-mono border bg-amber-500/10 text-amber-500 border-amber-500/20 leading-none"
+            title="置顶任务"
+          >
+            <Pin class="w-2.5 h-2.5 shrink-0 rotate-45" />
+            <span>置顶</span>
+          </span>
+
           <span v-if="(task.source_id || '').startsWith('app:')" class="shrink-0 inline-flex items-center rounded px-1 py-px text-[9px] font-mono border bg-emerald-500/10 text-emerald-500 border-emerald-500/20 leading-none">
             应用
           </span>
@@ -206,13 +237,39 @@ function getShortLangName(name: string): string {
     </div>
 
     <!-- ========== 2. 小屏 (Mobile < 640px) 卡片式布局 ========== -->
-    <div class="sm:hidden p-3 hover:bg-muted/30 transition-colors space-y-2">
+    <div
+      class="sm:hidden p-3 transition-all space-y-2 group select-none"
+      :class="[
+        selected ? 'bg-primary/[0.07] border-l-2 border-primary' : 'hover:bg-muted/30',
+        hasSelection ? 'cursor-pointer active:bg-muted/50' : ''
+      ]"
+      @click="hasSelection && $emit('toggleSelect', task.id)"
+    >
       <div class="flex items-start justify-between gap-2 border-b border-border/40 pb-2">
         <div class="flex items-center gap-2 min-w-0 flex-1">
           <StatusDot
             :state="task.running_status === 'running' ? 'running' : (task.running_status === 'queued' || task.running_status === 'pending' ? 'pending' : 'none')"
+            @click.stop
           />
-          <span class="text-[10px] text-muted-foreground tabular-nums shrink-0">#{{ total - (currentPage - 1) * pageSize - index }}</span>
+          <!-- 序号 / 复选框 (移动端同位替换：平时带微药丸易于触控，多选模式下显示 Checkbox，点击整卡或序号均可切换) -->
+          <div
+            class="shrink-0 flex items-center justify-center cursor-pointer"
+            @click.stop="$emit('toggleSelect', task.id)"
+          >
+            <Checkbox
+              v-if="selected || hasSelection"
+              :checked="selected"
+              class="shrink-0"
+              @update:checked="$emit('toggleSelect', task.id)"
+            />
+            <span
+              v-else
+              class="h-5 min-w-[22px] px-1 rounded bg-muted/60 hover:bg-primary/10 hover:text-primary active:scale-95 text-[10px] text-muted-foreground font-mono tabular-nums flex items-center justify-center transition-all border border-border/40"
+              title="点击勾选进入多选模式"
+            >
+              #{{ total - (currentPage - 1) * pageSize - index }}
+            </span>
+          </div>
           <FolderSync v-if="task.type === TASK_TYPE.AGENT_SYNC_SCRIPT" class="h-4 w-4 shrink-0" :class="TASK_TYPE_CONFIG[TASK_TYPE.AGENT_SYNC_SCRIPT]?.color" />
           <Terminal v-else class="h-4 w-4 shrink-0" :class="TASK_TYPE_CONFIG[TASK_TYPE.NORMAL]?.color" />
           <span class="font-bold text-sm text-foreground truncate">{{ task.name }}</span>
@@ -220,9 +277,16 @@ function getShortLangName(name: string): string {
             <Zap v-if="getSyncMode(task) === 'realtime' || getSyncMode(task) === 'hybrid'" class="w-2.5 h-2.5 shrink-0" />
             <span>{{ getSyncMode(task) === 'realtime' ? '实时' : (getSyncMode(task) === 'hybrid' ? '混合' : '定时') }}</span>
           </span>
-          <Pin v-if="task.pin_type === 'top'" class="h-3 w-3 text-primary fill-primary shrink-0 rotate-45" />
+          <span
+            v-if="task.pin_type === 'top'"
+            class="shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-mono border bg-amber-500/10 text-amber-500 border-amber-500/20 leading-none"
+            title="置顶任务"
+          >
+            <Pin class="w-2.5 h-2.5 shrink-0 rotate-45" />
+            <span>置顶</span>
+          </span>
         </div>
-        <span @click="$emit('toggleTask', task, !task.enabled)" class="cursor-pointer shrink-0">
+        <span @click.stop="$emit('toggleTask', task, !task.enabled)" class="cursor-pointer shrink-0">
           <div v-if="task.enabled" class="h-6 w-6 rounded-md bg-green-500/10 flex items-center justify-center">
             <Zap class="h-3.5 w-3.5 text-green-500 fill-green-500" />
           </div>
@@ -244,7 +308,7 @@ function getShortLangName(name: string): string {
         </div>
       </div>
 
-      <div class="flex items-center justify-between pt-1.5 border-t border-border/40 text-xs">
+      <div class="flex items-center justify-between pt-1.5 border-t border-border/40 text-xs" @click.stop>
         <div class="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" class="h-7 text-xs px-2" @click="$emit('run', task.id)" :disabled="executingTaskId === task.id">
             <Play class="h-3 w-3 mr-1" /> 执行

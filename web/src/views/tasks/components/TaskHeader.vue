@@ -14,8 +14,8 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import {
-  Search, Tag, ChevronDown, RefreshCw, Wrench, Plus, GitBranch, Terminal, Package,
-  Sparkles, Trash2, Pin, X, Server, Loader2, Layers, FolderSync
+  Search, Tag, ChevronDown, RefreshCw, Plus, GitBranch, Terminal, Package,
+  Pin, X, Server, Loader2, Layers, FolderSync
 } from 'lucide-vue-next'
 import { TASK_TYPE, TASK_TYPE_CONFIG } from '@/constants'
 import type { TaskView } from '../Tasks.vue'
@@ -38,8 +38,6 @@ const emit = defineEmits<{
   'typeChange': []
   'refresh': []
   'clearAgentFilter': []
-  'openBatchUpdate': []
-  'confirmBatchDelete': []
   'openCreateTask': []
   'openCreateAgentSync': []
   'openCreateRepo': []
@@ -181,27 +179,7 @@ function blurActive() {
           <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
         </Button>
 
-        <!-- 批量操作下拉菜单 -->
-        <DropdownMenu>
-          <DropdownMenuTrigger as-child>
-            <Button variant="outline" class="shrink-0 px-2 xl:px-3 h-9 shadow-sm gap-1">
-              <Wrench class="h-4 w-4" />
-              <span class="hidden xl:inline">批量操作</span>
-              <ChevronDown class="h-3.5 w-3.5 opacity-60" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-40">
-            <DropdownMenuItem class="cursor-pointer gap-2" @select="(e: Event) => { e.preventDefault(); blurActive(); $emit('openBatchUpdate'); }">
-              <Sparkles class="h-4 w-4 text-primary" />
-              <span>批量修改配置</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem class="cursor-pointer gap-2 text-destructive focus:text-destructive" @select="(e: Event) => { e.preventDefault(); blurActive(); $emit('confirmBatchDelete'); }">
-              <Trash2 class="h-4 w-4" />
-              <span>批量删除任务</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
 
         <!-- 统一新建下拉菜单按钮 -->
         <DropdownMenu>

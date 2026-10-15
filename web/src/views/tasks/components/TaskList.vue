@@ -1,12 +1,14 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import AppTaskRow from './rows/AppTaskRow.vue'
 import NormalTaskRow from './rows/NormalTaskRow.vue'
 import RepoTaskRow from './rows/RepoTaskRow.vue'
+import { Checkbox } from '@/components/ui/checkbox'
 import { ArrowUpDown, ArrowUp, ArrowDown, GitBranch, Terminal, Package } from 'lucide-vue-next'
 import type { Task, Agent } from '@/api'
 import { TASK_TYPE } from '@/constants'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   tasks: Task[]
   total: number
   currentPage: number
@@ -16,7 +18,16 @@ const props = defineProps<{
   order: string
   executingTaskId?: string | null
   agentMap: Record<string, Agent>
-}>()
+  selectedIds?: string[]
+  isAllSelected?: boolean
+  isIndeterminate?: boolean
+}>(), {
+  selectedIds: () => [],
+  isAllSelected: false,
+  isIndeterminate: false
+})
+
+const hasSelection = computed(() => (props.selectedIds?.length || 0) > 0)
 
 const emit = defineEmits<{
   'toggleSort': [field: string]
@@ -33,14 +44,56 @@ const emit = defineEmits<{
   'openExportDialog': [task: Task]
   'confirmDelete': [id: string]
   'shareApp': [task: Task]
+  'toggleSelect': [id: string]
+  'toggleAll': []
 }>()
 </script>
 
 <template>
   <div class="rounded-lg border bg-card overflow-hidden">
+    <!-- 小屏 (sm:hidden) 专属多选控制条：当有选中项时展示在列表顶部 -->
+    <div
+      v-if="hasSelection"
+      class="sm:hidden flex items-center justify-between px-3.5 py-2 bg-primary/5 border-b border-primary/20 text-xs"
+    >
+      <div class="flex items-center gap-2">
+        <Checkbox
+          :checked="isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)"
+          id="mobile-select-all"
+          @update:checked="$emit('toggleAll')"
+        />
+        <label for="mobile-select-all" class="text-xs font-semibold cursor-pointer select-none">
+          {{ isAllSelected ? '已全选本页' : '全选本页' }}
+        </label>
+      </div>
+      <span class="text-[11px] text-muted-foreground font-mono">
+        已选 {{ selectedIds?.length || 0 }} / {{ tasks.length }} 项
+      </span>
+    </div>
+
     <!-- 大屏/中屏统一表格头部 (sm 隐藏，md/lg 显示) -->
-    <div class="hidden sm:flex items-center gap-2 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium">
-      <span class="w-10 md:w-12 shrink-0">序号</span>
+    <div class="hidden sm:flex items-center gap-2 px-4 py-2 border-b bg-muted/20 text-xs text-muted-foreground font-medium select-none group/header">
+      <!-- 对应 StatusDot 宽度的微距占位，保持与行内首项像素级对齐 -->
+      <span class="w-2 shrink-0" />
+
+      <!-- 序号列 / 全选 Checkbox 同位无缝替换 -->
+      <div class="w-12 shrink-0 flex items-center">
+        <Checkbox
+          v-if="hasSelection || isAllSelected || isIndeterminate"
+          :checked="isAllSelected ? true : (isIndeterminate ? 'indeterminate' : false)"
+          title="全选/取消当前页"
+          @update:checked="$emit('toggleAll')"
+        />
+        <template v-else>
+          <span class="group-hover/header:hidden">序号</span>
+          <Checkbox
+            class="hidden group-hover/header:flex"
+            :checked="false"
+            title="全选当前页"
+            @update:checked="$emit('toggleAll')"
+          />
+        </template>
+      </div>
       <span class="w-8 shrink-0 text-center whitespace-nowrap">类型</span>
       <span
         class="w-44 lg:w-56 shrink-0 flex items-center gap-1 cursor-pointer select-none hover:text-foreground transition-colors"
@@ -105,6 +158,8 @@ const emit = defineEmits<{
           :page-size="pageSize"
           :executing-task-id="executingTaskId"
           :agent-map="agentMap"
+          :selected="selectedIds.includes(task.id)"
+          :has-selection="hasSelection"
           @run="$emit('runTask', $event)"
           @view-logs="$emit('viewLogs', $event)"
           @filter-by-app="$emit('filterByApp', $event)"
@@ -112,6 +167,7 @@ const emit = defineEmits<{
           @uninstall-app="$emit('uninstallApp', $event)"
           @toggle-task="(t, val) => $emit('toggleTask', t, val)"
           @share-app="$emit('shareApp', $event)"
+          @toggle-select="$emit('toggleSelect', $event)"
         />
 
         <!-- 业务场景 B: Git 仓库同步任务 -->
@@ -124,6 +180,8 @@ const emit = defineEmits<{
           :page-size="pageSize"
           :executing-task-id="executingTaskId"
           :agent-map="agentMap"
+          :selected="selectedIds.includes(task.id)"
+          :has-selection="hasSelection"
           @run="$emit('runTask', $event)"
           @view-logs="$emit('viewLogs', $event)"
           @edit="$emit('openEditTask', $event)"
@@ -132,6 +190,7 @@ const emit = defineEmits<{
           @export-cmd="$emit('openExportDialog', $event)"
           @duplicate="$emit('duplicateTask', $event)"
           @delete="$emit('confirmDelete', $event)"
+          @toggle-select="$emit('toggleSelect', $event)"
         />
 
         <!-- 业务场景 C: 普通脚本任务 -->
@@ -144,6 +203,8 @@ const emit = defineEmits<{
           :page-size="pageSize"
           :executing-task-id="executingTaskId"
           :agent-map="agentMap"
+          :selected="selectedIds.includes(task.id)"
+          :has-selection="hasSelection"
           @run="$emit('runTask', $event)"
           @view-logs="$emit('viewLogs', $event)"
           @edit="$emit('openEditTask', $event)"
@@ -152,6 +213,7 @@ const emit = defineEmits<{
           @dep-install="$emit('depInstall', $event)"
           @duplicate="$emit('duplicateTask', $event)"
           @delete="$emit('confirmDelete', $event)"
+          @toggle-select="$emit('toggleSelect', $event)"
         />
       </div>
     </div>

@@ -12,6 +12,7 @@ const props = defineProps<{
   openDelete: boolean
   openBatchDelete: boolean
   targetTask?: Task | null
+  batchCount?: number
   loading?: boolean
 }>()
 
@@ -100,15 +101,22 @@ function handleDeleteSingle() {
 
   <!-- 批量删除确认 -->
   <BaihuDialog :open="openBatchDelete" title="确认批量删除" @update:open="!loading && $emit('update:openBatchDelete', $event)">
-    <div class="text-sm text-muted-foreground leading-relaxed py-2">
-      确定要批量删除当前筛选出来的所有任务吗？
-      <p class="mt-2 text-destructive font-medium">⚠️ 操作不可撤销，请谨慎操作。</p>
+    <div class="text-xs text-muted-foreground leading-relaxed py-2 space-y-2">
+      <div v-if="batchCount && batchCount > 0">
+        确定要批量删除已选中的 <strong class="text-destructive font-bold text-sm">{{ batchCount }}</strong> 个任务吗？
+      </div>
+      <div v-else>
+        确定要批量删除当前筛选出来的所有任务吗？
+      </div>
+      <div class="p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+        ⚠️ 操作不可撤销，被删除的任务将停止调度并移除记录。
+      </div>
     </div>
     <template #footer>
-      <Button variant="ghost" :disabled="loading" @click="$emit('update:openBatchDelete', false)">取消</Button>
-      <Button variant="destructive" class="shadow-lg shadow-destructive/20" :disabled="loading" @click="$emit('confirmBatchDelete')">
+      <Button variant="ghost" size="sm" :disabled="loading" @click="$emit('update:openBatchDelete', false)">取消</Button>
+      <Button variant="destructive" size="sm" class="shadow-lg shadow-destructive/20 font-semibold" :disabled="loading" @click="$emit('confirmBatchDelete')">
         <Loader2 v-if="loading" class="w-3.5 h-3.5 mr-1.5 animate-spin" />
-        <span>{{ loading ? '正在删除...' : '确认批量删除' }}</span>
+        <span>{{ loading ? '正在删除...' : (batchCount && batchCount > 0 ? `确认删除 (${batchCount})` : '确认全量删除') }}</span>
       </Button>
     </template>
   </BaihuDialog>

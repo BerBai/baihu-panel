@@ -6,6 +6,22 @@ outline: 2
 
 本页面记录了baihu-panel的主要版本更新历史。
 
+## 2026.10.15 (v1.5.4)
+### MCP 双传输共存架构 (Streamable HTTP + SSE)、通用 OAuth 2.0 单点登录与全站 Inter 字体排版
+- **MCP 协议双传输共存架构 (Streamable HTTP + HTTP/SSE) (Major Feature & AI & MCP)**：
+  - **Streamable HTTP 单端点现行规范集成**：全面支持 2025-03-26 MCP 现行官方标准规范，单端点（`/open2api/v1/mcp`）统一通信，支持即时 JSON-RPC 响应与渐进式流式传输，会话基于标准请求头 `Mcp-Session-Id`，天然穿透企业网关与反向代理，无缝适配 OpenCode 2、Cursor、Claude Desktop、DSH、Cline 等现代 AI 客户端（[#193](https://github.com/engigu/baihu-panel/issues/193)）；
+  - **HTTP + SSE 双端点兼容模式**：完整保留 2024-11-05 早期双端点规范（`GET /open2api/v1/mcp/sse` 与 `POST /open2api/v1/mcp/messages`），为仅支持旧版协议的客户端提供无缝向下兼容；
+  - **底层共享与长连接防爆熔断**：两种传输通道共享同一个底层 `NewBaihuMCPServer` 业务与工具实例，统一复用现有 OpenAPI Bearer Token 及 `?token=` 鉴权；保留 SSE 活跃连接数限制（最多支持 3 个长连接会话并发维持），防止海量空闲长连接耗尽系统协程资源；
+  - **前端双协议切换与配置指引**：系统设置中“AI 客户端连接 (MCP)”卡片新增 Streamable HTTP 与 HTTP + SSE 协议快捷切换器，支持动态显示对应端点 URL 并一键复制客户端配置 JSON；
+  - **文档与测试全量就绪**：补齐完整的 MCP 自动化集成测试套件（15 个测试 100% PASS），同步更新官方接入指南文档。
+- **通用 OAuth 2.0 单点登录协议集成与互联折叠面板 (Feature & Auth & UI)**：
+  - **通用 OAuth 2.0 原生集成**：在原有 OIDC 基础上扩展支持通用 OAuth 2.0 协议标准（Authorization Code Flow），支持自定义授权端点、令牌端点、用户信息端点、作用域（Scopes）与用户唯一标识键（兼容 GitHub、Gitee、GitLab 等任意主流 OAuth 2.0 平台）；
+  - **互联风格折叠配置卡片**：安全设置中单点登录配置升级为优雅的折叠抽屉卡片，并自动自适应协议类型展示对应配置项；
+  - **登录页无感双模适配**：登录界面根据后端配置自动适配 OIDC 或 OAuth 2.0 快捷登录入口，展示定制平台名称与直观的授权跳转。
+- **全局 Inter 现代字体与执行历史排版优化 (Style & UI)**：
+  - **全站现代 Inter 字体栈统一**：全站默认英文与数字字体升级为现代 `Inter` 字体，强化数字 `tabular-nums` 等宽渲染，呈现精致克制的高级感排版；
+  - **执行历史底栏排版统一**：移除执行历史列表多余的空白撑开，分页器与筛选状态直接吸附在表格底栏，全量与其他核心业务页面保持一致。
+
 ## 2026.10.15 (v1.5.3)
 ### 原生 OIDC / Pocket ID 单点登录、任务批量设置多类型混选重构、表格分页数独立持久化与演示模式全面加固
 - **原生 OIDC / Pocket ID 单点登录支持 (Feature & Auth & Security)**：

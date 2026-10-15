@@ -51,8 +51,7 @@ const sizeClasses = {
       :show-close-button="false"
       :class="[
         'overflow-hidden border-none p-0 bg-background/90 backdrop-blur-xl shadow-2xl ring-1 ring-black/5 dark:ring-white/10 rounded-xl',
-        sizeClasses[size],
-        'transition-all duration-300'
+        sizeClasses[size]
       ]"
     >
       <!-- 统一的 Header 风格 -->
@@ -90,7 +89,7 @@ const sizeClasses = {
 
       <!-- 内容区域 (保持整洁简洁) -->
       <div class="p-4 sm:p-5">
-        <div class="animate-in fade-in slide-in-from-bottom-1 duration-400">
+        <div>
           <slot />
         </div>
 
@@ -102,35 +101,3 @@ const sizeClasses = {
     </DialogContent>
   </Dialog>
 </template>
-
-<style scoped>
-:deep([data-state='open']) {
-  animation: baihu-dialog-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-:deep([data-state='closed']) {
-  animation: baihu-dialog-out 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes baihu-dialog-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-}
-
-@keyframes baihu-dialog-out {
-  from {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate(-50%, -48%) scale(0.96);
-  }
-}
-</style>

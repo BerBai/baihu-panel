@@ -390,21 +390,10 @@ table tbody tr:hover {
   background-color: oklch(from var(--muted) l c h / 0.5);
 }
 
-/* 模态框和弹出层增强 - 背景模糊 */
+/* 模态框和弹出层增强 */
 [role="dialog"]::backdrop,
 [data-state="open"]::backdrop {
-  backdrop-filter: blur(4px);
-  animation: fadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
+  background: rgba(0, 0, 0, 0.7);
 }
 
 /* 代码块增强 */

@@ -80,16 +80,17 @@ const filteredLanguages = computed(() => {
             </div>
             <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                 <div v-for="(lang, index) in filteredLanguages" :key="lang.plugin + lang.version"
-                    class="relative group/item flex flex-col p-3.5 sm:p-4 rounded-xl border bg-card/40 hover:bg-accent/40 hover:border-primary/40 transition-all duration-200 shadow-sm">
+                    class="relative group/item flex flex-col p-3.5 sm:p-4 rounded-xl border bg-card/40 hover:bg-accent/40 hover:border-primary/40 transition-all duration-200 shadow-sm overflow-hidden">
                     
-                    <!-- 顶部：图标、名称、版本与删除 -->
-                    <div class="flex items-start justify-between gap-3">
+                    <!-- 装饰性背景序号 -->
+                    <div
+                        class="absolute right-3 top-2 text-5xl font-bold text-primary/5 select-none transition-colors group-hover/item:text-primary/20 pointer-events-none">
+                        {{ index + 1 }}
+                    </div>
+
+                    <!-- 顶部：图标、名称与版本 -->
+                    <div class="flex items-start justify-between gap-3 relative z-10">
                         <div class="flex items-center gap-3 overflow-hidden">
-                            <!-- 序号 -->
-                            <div class="flex items-center justify-center w-6 sm:w-7 shrink-0">
-                                <span class="text-[9px] font-mono text-muted-foreground/50 tabular-nums">#{{
-                                    filteredLanguages.length - index }}</span>
-                            </div>
                             <!-- 图标 -->
                             <div class="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center font-bold text-primary uppercase shrink-0 border border-primary/10 shadow-sm overflow-hidden bg-background">
                                 <template v-if="getLangIcon(lang.plugin)">
@@ -115,13 +116,6 @@ const filteredLanguages = computed(() => {
                                 </div>
                             </div>
                         </div>
-
-                        <!-- 右上角删除按钮 -->
-                        <Button variant="ghost" size="icon" 
-                            class="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all sm:opacity-0 group-hover/item:opacity-100" 
-                            @click="emit('uninstall', lang)" title="卸载">
-                            <Trash2 class="h-4 w-4" />
-                        </Button>
                     </div>
 
                     <!-- 中间：完整路径 (可点击查看详情) -->
@@ -133,7 +127,7 @@ const filteredLanguages = computed(() => {
                     </div>
 
                     <!-- 底部：操作按钮网格 -->
-                    <div class="mt-4 flex items-center gap-2">
+                    <div class="mt-4 flex items-center gap-1.5 sm:gap-2">
                         <Button variant="outline" size="sm"
                             :disabled="!SUPPORTED_DEPS_LANGS.includes(lang.plugin)"
                             class="h-8 px-0 text-[11px] font-semibold flex-1 bg-background/50 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -150,6 +144,11 @@ const filteredLanguages = computed(() => {
                                 lang.isGlobal ? 'text-amber-600 border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10' : '')"
                             @click="emit('toggle-default', lang)">
                             {{ lang.isGlobal ? '取消默认' : '设为默认' }}
+                        </Button>
+                        <Button variant="ghost" size="icon"
+                            class="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                            @click="emit('uninstall', lang)" title="卸载">
+                            <Trash2 class="h-3.5 w-3.5" />
                         </Button>
                     </div>
                 </div>

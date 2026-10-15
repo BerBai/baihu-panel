@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { ListTodo, Variable, Clock, Play, ScrollText } from 'lucide-vue-next'
+import { ListTodo, Variable, Clock, Play, ScrollText, Activity, ArrowUpRight, CheckCircle2, PieChart as PieIcon, TrendingUp } from 'lucide-vue-next'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { api, type Stats, type DailyStats, type TaskStatsItem } from '@/api'
 import ApexCharts from 'apexcharts'
 
@@ -22,15 +23,87 @@ let themeChangeTimeout: number | null = null
 let isInitializing = true
 
 const statItems = [
-  { key: 'today_execs', label: '今日执行', icon: Play, route: '/history?date=today' },
-  { key: 'tasks', label: '任务总数', icon: ListTodo, route: '/tasks' },
-  { key: 'envs', label: '环境变量', icon: Variable, route: '/environments' },
-  { key: 'logs', label: '日志总数', icon: ScrollText, route: '/history' },
-  { key: 'scheduled', label: '调度注册', icon: Clock, route: '/tasks?enabled=1&type=all' },
-  { key: 'running', label: '正在运行', icon: Play, route: '/history?status=running' },
+  {
+    key: 'today_execs',
+    label: '今日执行',
+    unit: '次',
+    icon: Play,
+    route: '/history?date=today',
+    dotClass: 'bg-sky-500/70 dark:bg-sky-400/70',
+    topBarClass: 'bg-gradient-to-r from-sky-500/30 via-sky-400/10 to-transparent',
+    iconWrapperClass: 'bg-sky-500/8 text-sky-600/90 dark:text-sky-400/90 dark:bg-sky-400/10',
+    iconColor: 'text-sky-500'
+  },
+  {
+    key: 'tasks',
+    label: '任务总数',
+    unit: '项',
+    icon: ListTodo,
+    route: '/tasks',
+    dotClass: 'bg-zinc-400/80 dark:bg-zinc-400/80',
+    topBarClass: 'bg-gradient-to-r from-zinc-400/30 via-zinc-400/10 to-transparent',
+    iconWrapperClass: 'bg-zinc-500/8 text-zinc-600 dark:text-zinc-300 dark:bg-zinc-400/10',
+    iconColor: 'text-zinc-400'
+  },
+  {
+    key: 'envs',
+    label: '环境变量',
+    unit: '个',
+    icon: Variable,
+    route: '/environments',
+    dotClass: 'bg-amber-500/70 dark:bg-amber-400/70',
+    topBarClass: 'bg-gradient-to-r from-amber-500/30 via-amber-400/10 to-transparent',
+    iconWrapperClass: 'bg-amber-500/8 text-amber-600/90 dark:text-amber-400/90 dark:bg-amber-400/10',
+    iconColor: 'text-amber-500'
+  },
+  {
+    key: 'logs',
+    label: '日志总数',
+    unit: '条',
+    icon: ScrollText,
+    route: '/history',
+    dotClass: 'bg-slate-400/80 dark:bg-slate-400/80',
+    topBarClass: 'bg-gradient-to-r from-slate-400/30 via-slate-400/10 to-transparent',
+    iconWrapperClass: 'bg-slate-500/8 text-slate-600 dark:text-slate-300 dark:bg-slate-400/10',
+    iconColor: 'text-slate-400'
+  },
+  {
+    key: 'scheduled',
+    label: '调度注册',
+    unit: '项',
+    icon: Clock,
+    route: '/tasks?enabled=1&type=all',
+    dotClass: 'bg-indigo-500/70 dark:bg-indigo-400/70',
+    topBarClass: 'bg-gradient-to-r from-indigo-500/30 via-indigo-400/10 to-transparent',
+    iconWrapperClass: 'bg-indigo-500/8 text-indigo-600/90 dark:text-indigo-400/90 dark:bg-indigo-400/10',
+    iconColor: 'text-indigo-500'
+  },
+  {
+    key: 'running',
+    label: '正在运行',
+    unit: '个',
+    icon: Activity,
+    route: '/history?status=running',
+    dotClass: 'bg-emerald-500/70 dark:bg-emerald-400/70',
+    topBarClass: 'bg-gradient-to-r from-emerald-500/30 via-emerald-400/10 to-transparent',
+    iconWrapperClass: 'bg-emerald-500/8 text-emerald-600/90 dark:text-emerald-400/90 dark:bg-emerald-400/10',
+    iconColor: 'text-emerald-500'
+  },
 ]
 
 const isDark = ref(document.documentElement.classList.contains('dark'))
+
+// 计算近 N 天总执行数与平均成功率
+const totalExecutions = computed(() => {
+  return sendStats.value.reduce((sum, item) => sum + item.total, 0)
+})
+
+const overallSuccessRate = computed(() => {
+  const total = totalExecutions.value
+  if (!total) return '100.0'
+  const success = sendStats.value.reduce((sum, item) => sum + item.success, 0)
+  return ((success / total) * 100).toFixed(1)
+})
 
 // 数字滚动动画
 function animateNumber(key: keyof Stats, target: number) {
@@ -182,6 +255,9 @@ const renderLineChart = () => {
       }
     },
     stroke: { curve: 'smooth' as const, width: 3, lineCap: 'round' as const },
+    dataLabels: {
+      enabled: false
+    },
     markers: {
       size: 6,
       colors: ['#3b82f6', '#10b981', '#ef4444'],
@@ -300,61 +376,56 @@ const renderPieChart = () => {
     series: taskStats.value.map(item => item.count),
     chart: {
       type: 'donut' as const,
-      height: 260,
+      height: 280,
       toolbar: { show: false },
       background: 'transparent',
       animations: {
         enabled: true,
-        speed: 400,
-        animateGradually: {
-          enabled: false
-        },
-        dynamicAnimation: {
-          enabled: true,
-          speed: 400
-        }
+        speed: 500,
+        animateGradually: { enabled: true, delay: 100 },
+        dynamicAnimation: { enabled: true, speed: 350 }
       }
     },
     labels: taskStats.value.map(item => item.task_name),
-    colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'],
+    colors: ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b'],
     legend: {
       show: false
     },
     stroke: {
       show: true,
-      width: 2,
-      colors: [isDark.value ? '#1e293b' : '#ffffff']
+      width: 2.5,
+      colors: [isDark.value ? '#18181b' : '#ffffff']
     },
     plotOptions: {
       pie: {
         donut: {
-          size: '50%',
+          size: '68%',
           labels: {
             show: true,
             name: {
               show: true,
-              fontSize: '12px',
+              fontSize: '11px',
               fontFamily: 'Inter, sans-serif',
-              fontWeight: 600,
+              fontWeight: 500,
               color: textColor,
-              offsetY: -10
+              offsetY: -8
             },
             value: {
               show: true,
-              fontSize: '12px',
+              fontSize: '15px',
               fontFamily: 'Inter, sans-serif',
-              fontWeight: 'bold',
-              color: textColor,
-              offsetY: 5,
+              fontWeight: 700,
+              color: isDark.value ? '#f8fafc' : '#0f172a',
+              offsetY: 4,
               formatter: (val: string) => val + ' 次'
             },
             total: {
               show: true,
-              showAlways: false,
-              label: '总执行',
-              fontSize: '12px',
+              showAlways: true,
+              label: '累计执行',
+              fontSize: '11px',
               fontFamily: 'Inter, sans-serif',
-              fontWeight: 600,
+              fontWeight: 500,
               color: textColor,
               formatter: () => String(totalCount) + ' 次'
             }
@@ -364,22 +435,7 @@ const renderPieChart = () => {
       }
     },
     dataLabels: {
-      enabled: true,
-      formatter: (val: number) => val.toFixed(1) + '%',
-      style: {
-        fontSize: '11px',
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: 'bold',
-        colors: ['#ffffff']
-      },
-      dropShadow: {
-        enabled: true,
-        top: 1,
-        left: 1,
-        blur: 2,
-        color: '#000',
-        opacity: 0.5
-      }
+      enabled: false
     },
     tooltip: {
       enabled: true,
@@ -441,57 +497,161 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="space-y-4">
+  <div class="space-y-6">
+    <!-- 头部问候与概览标题 -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
       <div>
         <h2 class="text-2xl font-bold tracking-tight">数据仪表</h2>
-        <p class="text-muted-foreground">查看系统运行状态和统计数据</p>
+        <p class="text-xs sm:text-sm text-muted-foreground mt-0.5">实时系统运行状态、任务调度活跃度与指标汇总</p>
       </div>
-
-      <div class="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Card v-for="item in statItems" :key="item.key" class="cursor-pointer hover:bg-accent/50 transition-colors"
-          @click="navigateTo(item.route)">
-          <CardHeader class="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle class="text-sm font-medium">{{ item.label }}</CardTitle>
-            <component :is="item.icon" class="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div class="text-xl sm:text-2xl font-semibold">{{ displayStats[item.key as keyof Stats] }}</div>
-          </CardContent>
-        </Card>
+      <div class="flex items-center gap-2 self-start sm:self-auto">
+        <Badge variant="outline" class="h-6 px-2.5 text-[11px] font-normal border-border/80 text-muted-foreground gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          服务正常运行
+        </Badge>
       </div>
+    </div>
 
-      <div class="grid gap-4 lg:grid-cols-10">
-        <Card class="lg:col-span-7 h-[400px]">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-base sm:text-lg">执行统计</CardTitle>
-            <CardDescription class="text-xs sm:text-sm">最近{{ chartDays }}天任务执行情况</CardDescription>
-          </CardHeader>
-          <CardContent class="relative h-[300px]">
-            <div id="stats-chart" class="w-full h-full"></div>
-            <div v-if="!chartsLoaded"
-              class="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm bg-card">
-              加载中...
-            </div>
-          </CardContent>
-        </Card>
+    <!-- 顶部 6 大关键指标卡片网格 -->
+    <div class="grid gap-3.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div
+        v-for="item in statItems"
+        :key="item.key"
+        @click="navigateTo(item.route)"
+        class="group relative overflow-hidden rounded-xl border border-border/60 hover:border-border dark:hover:border-zinc-700/80 bg-card/70 hover:bg-card p-3.5 sm:p-4 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md cursor-pointer flex flex-col justify-between min-h-[96px] sm:min-h-[102px]"
+      >
+        <!-- 顶部 1.5px 极细素雅强调微光条 -->
+        <div
+          class="absolute top-0 left-0 right-0 h-[1.5px] transition-opacity duration-300 opacity-40 group-hover:opacity-85"
+          :class="item.topBarClass"
+        />
 
-        <Card class="lg:col-span-3 h-[400px]">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-base sm:text-lg">任务占比</CardTitle>
-            <CardDescription class="text-xs sm:text-sm">最近{{ chartDays }}天任务执行分布</CardDescription>
-          </CardHeader>
-          <CardContent class="relative h-[300px]">
-            <div id="pie-chart" class="w-full h-full"></div>
+        <!-- 右下角巨幅微弱水印背景图标 (极弱质感衬底) -->
+        <component
+          :is="item.icon"
+          class="absolute -right-2.5 -bottom-2.5 w-16 h-16 opacity-[0.025] dark:opacity-[0.045] group-hover:opacity-[0.055] dark:group-hover:opacity-[0.08] group-hover:scale-105 transition-all duration-500 pointer-events-none select-none"
+          :class="item.iconColor"
+        />
+
+        <!-- 卡片顶部：主题色小药丸点 + 标题 + 右侧轻量图标胶囊 -->
+        <div class="flex items-center justify-between z-10">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="w-1.5 h-1.5 rounded-full shrink-0" :class="item.dotClass" />
+            <span class="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors truncate">
+              {{ item.label }}
+            </span>
+          </div>
+          <div
+            class="w-6 h-6 sm:w-7 sm:h-7 rounded-md flex items-center justify-center transition-all duration-300 group-hover:scale-105 shrink-0"
+            :class="item.iconWrapperClass"
+          >
+            <component :is="item.icon" class="w-3.5 h-3.5" />
+          </div>
+        </div>
+
+        <!-- 卡片底部：醒目大数字 + 单位 + 动态呼吸态 -->
+        <div class="mt-2.5 flex items-baseline justify-between z-10">
+          <div class="flex items-baseline gap-1">
+            <span
+              class="text-2xl sm:text-3xl font-extrabold tracking-tight font-['Inter'] tabular-nums"
+              :class="item.key === 'running' && displayStats.running > 0 ? 'text-emerald-500' : 'text-foreground'"
+            >
+              {{ displayStats[item.key as keyof Stats] }}
+            </span>
+            <span class="text-[11px] text-muted-foreground/60 font-normal">
+              {{ item.unit }}
+            </span>
+          </div>
+
+          <!-- 状态指示灯或悬停微动微标 -->
+          <div v-if="item.key === 'running' && displayStats.running > 0" class="flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+            <span class="relative flex h-1.5 w-1.5">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+            </span>
+            <span>运行中</span>
+          </div>
+          <ArrowUpRight
+            v-else
+            class="w-3.5 h-3.5 text-muted-foreground/20 group-hover:text-muted-foreground/60 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- 中部图表分析区域 -->
+    <div class="grid gap-4 lg:grid-cols-10 items-stretch">
+      <!-- 左侧：执行统计（经典折线图） -->
+      <Card class="lg:col-span-7 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col justify-between relative overflow-hidden">
+        <!-- 顶部素雅极细微光条 -->
+        <div class="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-sky-500/30 via-slate-400/20 to-transparent" />
+        <CardHeader class="pb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-border/40">
+          <div class="space-y-0.5">
+            <CardTitle class="text-sm sm:text-base flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 shrink-0">
+                <TrendingUp class="w-4 h-4" />
+              </div>
+              <span>执行统计趋势</span>
+            </CardTitle>
+            <CardDescription class="text-xs">最近 {{ chartDays }} 天任务触发与成功/失败分布</CardDescription>
+          </div>
+          <div class="flex items-center gap-2 self-start sm:self-auto">
+            <Badge variant="secondary" class="font-normal text-[11px] font-['Inter'] tabular-nums px-2 py-0.5 bg-muted/60 text-muted-foreground border-border/60">
+              周期总计: <span class="font-medium text-foreground ml-1">{{ totalExecutions }} 次</span>
+            </Badge>
+            <Badge variant="outline" class="font-normal text-[11px] font-['Inter'] tabular-nums px-2 py-0.5 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 bg-emerald-500/5 gap-1">
+              <CheckCircle2 class="w-3 h-3 text-emerald-500" />
+              {{ overallSuccessRate }}% 成功率
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent class="relative pt-4 pb-2 flex-1 min-h-[300px]">
+          <div id="stats-chart" class="w-full h-full"></div>
           <div v-if="!chartsLoaded"
-            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm bg-card">
-            加载中...
+            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+              <span>数据加载中...</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- 右侧：任务占比（甜甜圈环形图） -->
+      <Card class="lg:col-span-3 shadow-sm border-border/60 hover:border-border transition-colors flex flex-col justify-between relative overflow-hidden">
+        <!-- 顶部素雅极细微光条 -->
+        <div class="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-indigo-500/30 via-slate-400/20 to-transparent" />
+        <CardHeader class="pb-2 flex flex-row items-center justify-between gap-2 border-b border-border/40">
+          <div class="space-y-0.5">
+            <CardTitle class="text-sm sm:text-base flex items-center gap-2">
+              <div class="p-1.5 rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                <PieIcon class="w-4 h-4" />
+              </div>
+              <span>任务占比</span>
+            </CardTitle>
+            <CardDescription class="text-xs">各任务执行频次权重分布</CardDescription>
+          </div>
+          <Badge variant="secondary" class="font-normal text-[10px] font-['Inter'] px-1.5 py-0 bg-muted/60 text-muted-foreground border-border/60">
+            Top 任务
+          </Badge>
+        </CardHeader>
+        <CardContent class="relative pt-4 pb-2 flex-1 min-h-[300px] flex items-center justify-center">
+          <div id="pie-chart" class="w-full h-full"></div>
+          <div v-if="!chartsLoaded"
+            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+              <span>数据加载中...</span>
+            </div>
           </div>
           <div v-else-if="taskStats.length === 0"
-            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm bg-card">
-            暂无数据
+            class="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground text-xs bg-card/80">
+            <PieIcon class="w-8 h-8 opacity-20 mb-2" />
+            <span>暂无任务执行数据</span>
           </div>
         </CardContent>
       </Card>
     </div>
   </div>
 </template>
+

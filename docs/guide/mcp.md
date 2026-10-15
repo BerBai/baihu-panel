@@ -48,31 +48,31 @@
 
 ---
 
-### 方式二：远程网络 SSE 接入 (Server-Sent Events)
+### 方式二：远程网络 Streamable HTTP 接入
 
 适用于跨主机、Docker 容器部署或远程 Web AI Agent 接入。
 
-白虎面板在 Web 端口上挂载了受保护的 SSE 端点：
-- **SSE 连接端点**: `http://<面板IP>:<端口>/open2api/v1/mcp/sse`
-- **消息发送端点**: `http://<面板IP>:<端口>/open2api/v1/mcp/messages`
+白虎面板全面采用 MCP 现行主流传输协议标准（**Streamable HTTP 单端点规范**，2025-03-26 规范）。单端点统一通信，支持即时 JSON-RPC 响应与渐进式流式结果，天然穿透企业网关与反向代理，无缝适配 Cursor、Claude Desktop、OpenCode 2、DSH、Cline 等全系现代客户端。
 
-#### 鉴权与配置
+- **统一服务地址**: `http://<面板IP>:<端口>/open2api/v1/mcp?token=YOUR_OPENAPI_TOKEN`
 
-连接 SSE 端点需要携带在面板中配置的 OpenAPI Token，支持两种传参方式：
-1. **URL 参数**: `?token=YOUR_OPENAPI_TOKEN`（推荐，完美兼容浏览器原生 EventSource 握手）；
-2. **HTTP Header**: `Authorization: Bearer YOUR_OPENAPI_TOKEN`。
-
-在 AI 客户端中配置远程 SSE Server 示例：
+在客户端中配置远程 MCP Server 示例：
 
 ```json
 {
   "mcpServers": {
-    "baihu-remote": {
-      "url": "http://127.0.0.1:8052/open2api/v1/mcp/sse?token=sk-xxxxxxxxxxxxxxxxxxxx"
+    "baihu": {
+      "url": "http://127.0.0.1:8052/open2api/v1/mcp?token=sk-xxxxxxxxxxxxxxxxxxxx"
     }
   }
 }
 ```
+
+#### 鉴权方式说明
+
+连接 MCP 远程网络端点需要携带在面板中配置的 OpenAPI Token，支持两种传参方式：
+1. **URL 参数**: `?token=YOUR_OPENAPI_TOKEN`（推荐，跨客户端与浏览器握手通用）；
+2. **HTTP Header**: `Authorization: Bearer YOUR_OPENAPI_TOKEN`。
 
 ---
 

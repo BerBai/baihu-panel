@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
@@ -498,15 +497,14 @@ func TestPromptsGeneration(t *testing.T) {
 	}
 }
 
-// 8. SSE HTTP 端点与 OpenAPI Token 鉴权集成测试
-func TestSSETransportIntegration(t *testing.T) {
+// 8. Streamable HTTP 单端点协议 (2025-03-26 现行规范) 集成测试
+func TestStreamableHTTPTransportIntegration(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tempDir := setupTestDB(t)
 	defer os.RemoveAll(tempDir)
 
 	deps := InitDefaultDeps()
 
-	// 初始化一个管理员用户与 OpenAPI Token
 	adminUser := models.User{
 		ID:       "admin_001",
 		Username: "admin",
@@ -514,7 +512,7 @@ func TestSSETransportIntegration(t *testing.T) {
 	}
 	database.DB.Create(&adminUser)
 
-	validToken := "sk-baihu-mcp-test-token"
+	validToken := "sk-baihu-mcp-streamable-token"
 	settingsSvc := services.NewSettingsService()
 	tokenCfg := vo.TokenConfig{
 		Enabled: true,
@@ -523,31 +521,72 @@ func TestSSETransportIntegration(t *testing.T) {
 	tokenBytes, _ := json.Marshal(tokenCfg)
 	settingsSvc.Set(constant.SectionSite, constant.KeyOpenapiToken, string(tokenBytes))
 
-	// 构造测试路由
 	r := gin.New()
 	v1 := r.Group("/open2api/v1")
 	v1.Use(middleware.OpenapiRequired())
 	RegisterOpenAPIMCPRoutes(v1, deps)
 
-	// 8.1 未携带 Token 访问 SSE -> 401 Unauthorized
-	reqUnauthorized, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
+	// A. 未携带 Token 请求 /open2api/v1/mcp -> 401 Unauthorized
+	initReqBody := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test-client","version":"1.0.0"}}}`
+	reqUnauthorized, _ := http.NewRequest(http.MethodPost, "/open2api/v1/mcp", strings.NewReader(initReqBody))
+	reqUnauthorized.Header.Set("Content-Type", "application/json")
 	wUnauthorized := httptest.NewRecorder()
 	r.ServeHTTP(wUnauthorized, reqUnauthorized)
 	if wUnauthorized.Code != http.StatusUnauthorized {
-		t.Errorf("Expected 401 for unauthorized SSE request, got %d", wUnauthorized.Code)
+		t.Errorf("Expected 401 for unauthorized Streamable HTTP request, got %d", wUnauthorized.Code)
 	}
 
-	// 8.2 携带有效 URL Query ?token=xxx 访问 SSE -> 成功建立 SSE 连接 (返回 200 与 text/event-stream)
-	reqAuthorized, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse?token="+validToken, nil)
-	wAuthorized := httptest.NewRecorder()
+	// B. 携带 Authorization: Bearer <token> 发起 POST initialize 初始化请求
+	reqInit, _ := http.NewRequest(http.MethodPost, "/open2api/v1/mcp", strings.NewReader(initReqBody))
+	reqInit.Header.Set("Content-Type", "application/json")
+	reqInit.Header.Set("Authorization", "Bearer "+validToken)
+	wInit := httptest.NewRecorder()
+	r.ServeHTTP(wInit, reqInit)
 
-	// 异步监听以防长时间保持挂起
-	go r.ServeHTTP(wAuthorized, reqAuthorized)
-	time.Sleep(100 * time.Millisecond)
+	if wInit.Code != http.StatusOK {
+		t.Fatalf("Expected 200 for Streamable HTTP initialize, got code=%d body=%s", wInit.Code, wInit.Body.String())
+	}
 
-	contentType := wAuthorized.Header().Get("Content-Type")
-	if !strings.Contains(contentType, "text/event-stream") && wAuthorized.Code != http.StatusOK {
-		t.Errorf("Expected SSE content-type text/event-stream, got code=%d header=%s", wAuthorized.Code, contentType)
+	// 验证返回包含 JSON-RPC initialize 结果
+	var initResp map[string]any
+	if err := json.Unmarshal(wInit.Body.Bytes(), &initResp); err != nil {
+		t.Fatalf("Failed to parse JSON-RPC response: %v, raw: %s", err, wInit.Body.String())
+	}
+	result, ok := initResp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("Expected 'result' object in JSON-RPC response: %v", initResp)
+	}
+	serverInfo, ok := result["serverInfo"].(map[string]any)
+	if !ok || serverInfo["name"] != "baihu-panel" {
+		t.Errorf("Expected serverInfo.name='baihu-panel', got: %v", serverInfo)
+	}
+
+	// C. 验证响应头中的 Mcp-Session-Id 或通过 URL Query token 调用后续 tools/list
+	sessionID := wInit.Header().Get("Mcp-Session-Id")
+
+	toolsReqBody := `{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}`
+	reqTools, _ := http.NewRequest(http.MethodPost, "/open2api/v1/mcp?token="+validToken, strings.NewReader(toolsReqBody))
+	reqTools.Header.Set("Content-Type", "application/json")
+	if sessionID != "" {
+		reqTools.Header.Set("Mcp-Session-Id", sessionID)
+	}
+	wTools := httptest.NewRecorder()
+	r.ServeHTTP(wTools, reqTools)
+
+	if wTools.Code != http.StatusOK {
+		t.Fatalf("Expected 200 for tools/list request, got code=%d body=%s", wTools.Code, wTools.Body.String())
+	}
+	var toolsResp map[string]any
+	if err := json.Unmarshal(wTools.Body.Bytes(), &toolsResp); err != nil {
+		t.Fatalf("Failed to parse tools/list response: %v", err)
+	}
+	toolsResult, ok := toolsResp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("Expected 'result' object in tools/list response: %v", toolsResp)
+	}
+	toolsList, ok := toolsResult["tools"].([]any)
+	if !ok || len(toolsList) == 0 {
+		t.Errorf("Expected tools array with elements, got: %v", toolsResult)
 	}
 }
 
@@ -588,33 +627,7 @@ func TestTaskParamNormalization(t *testing.T) {
 	}
 }
 
-// 11. 验证 SSE 会话最大并发连接协程限制 (超过 3 个活跃连接自动 429 熔断保护系统)
-func TestSSESessionLimiter(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	tempDir := setupTestDB(t)
-	defer os.RemoveAll(tempDir)
 
-	deps := InitDefaultDeps()
-	r := gin.New()
-	RegisterOpenAPIMCPRoutes(r.Group("/open2api/v1"), deps)
-
-	// 并发模拟占用 MaxActiveSSESessions 个连接
-	for i := 0; i < MaxActiveSSESessions; i++ {
-		req, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
-		w := httptest.NewRecorder()
-		go r.ServeHTTP(w, req)
-	}
-	time.Sleep(50 * time.Millisecond)
-
-	// 第 4 个连接发起请求，验证被 429 拦截
-	reqExceeded, _ := http.NewRequest(http.MethodGet, "/open2api/v1/mcp/sse", nil)
-	wExceeded := httptest.NewRecorder()
-	r.ServeHTTP(wExceeded, reqExceeded)
-
-	if wExceeded.Code != http.StatusTooManyRequests {
-		t.Errorf("Expected 429 Too Many Requests when exceeding session limit, got %d", wExceeded.Code)
-	}
-}
 
 // 12. 声明式应用与应用商店生命周期工具测试
 func TestAppLifecycleTools(t *testing.T) {

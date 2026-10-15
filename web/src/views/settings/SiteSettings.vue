@@ -183,24 +183,24 @@ function openMcpDocs() {
 
 const showMcpSnippet = ref(false)
 
-const mcpSseUrl = computed(() => {
+const mcpUrl = computed(() => {
   if (typeof window === 'undefined') return ''
   const base = window.location.origin
   const token = form.value.openapi_token || '<Token>'
-  return `${base}/open2api/v1/mcp/sse?token=${token}`
+  return `${base}/open2api/v1/mcp?token=${token}`
 })
 
 const mcpConfigJson = computed(() => {
   return JSON.stringify({
     mcpServers: {
       "baihu": {
-        "url": mcpSseUrl.value
+        "url": mcpUrl.value
       }
     }
   }, null, 2)
 })
 
-async function copyMcpSseUrl() {
+async function copyMcpUrl() {
   if (isDemoMode.value) {
     toast.error('演示模式下禁止使用 MCP 能力')
     return
@@ -209,9 +209,9 @@ async function copyMcpSseUrl() {
     toast.error('请先生成并保存 OpenAPI Token')
     return
   }
-  const success = await copyTextToClipboard(mcpSseUrl.value)
+  const success = await copyTextToClipboard(mcpUrl.value)
   if (success) {
-    toast.success('MCP SSE 连接地址已复制到剪贴板')
+    toast.success('MCP 连接地址已复制到剪贴板')
   } else {
     toast.error('复制失败，请手动复制')
   }
@@ -444,13 +444,13 @@ onMounted(loadSettings)
 
                 <div class="space-y-1">
                   <Label class="text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>SSE 远程连接 URL</span>
+                    <span>远程连接 URL (Streamable HTTP)</span>
                     <span v-if="isDemoMode" class="text-destructive text-[10px]">演示模式下不可用</span>
                     <span v-else-if="!form.openapi_token" class="text-amber-500 text-[10px]">需先生成 Token</span>
                   </Label>
                   <div class="flex items-center gap-1.5">
                     <Input
-                      :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : mcpSseUrl"
+                      :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : mcpUrl"
                       readonly
                       :disabled="isDemoMode"
                       class="text-xs h-8 font-mono bg-muted/40 select-all flex-1 min-w-0"
@@ -460,7 +460,7 @@ onMounted(loadSettings)
                       variant="outline"
                       size="sm"
                       class="h-8 px-2.5 shrink-0 text-xs gap-1"
-                      @click="copyMcpSseUrl"
+                      @click="copyMcpUrl"
                       :disabled="isDemoMode || !form.openapi_token || !form.openapi_enabled"
                       :title="isDemoMode ? '演示模式下禁止使用 MCP 能力' : '复制'"
                     >

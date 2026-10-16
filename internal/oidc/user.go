@@ -1,67 +1,59 @@
-package controllers
+package oidc
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
-	"github.com/engigu/baihu-panel/internal/eventbus"
 	"github.com/engigu/baihu-panel/internal/models"
+	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/utils"
-
-	"github.com/gin-gonic/gin"
 )
 
-func (ac *AuthController) logOidcFailure(c *gin.Context, username, message string) {
-	eventbus.DefaultBus.Publish(eventbus.Event{
-		Type: constant.EventUserLogin,
-		Payload: map[string]interface{}{
-			"ip":        c.ClientIP(),
-			"username":  username,
-			"userAgent": c.GetHeader("User-Agent"),
-			"status":    "failed",
-			"message":   "单点登录失败：" + message,
-		},
-	})
+// ErrUserNotLinked 提示第三方账号未关联且系统未开启自动开通
+var ErrUserNotLinked = errors.New("当前第三方身份未绑定任何系统账号，请联系管理员")
+
+// Claims OIDC / OAuth 2.0 统一身份声明模型
+type Claims struct {
+	Sub               string   `json:"sub"`
+	Email             string   `json:"email"`
+	PreferredUsername string   `json:"preferred_username"`
+	Name              string   `json:"name"`
+	Groups            []string `json:"groups"`
 }
 
-// resolveOidcUser 按 subject 精确匹配（支持多源隔离） → 邮箱绑定 → 按配置自动创建
-func (ac *AuthController) resolveOidcUser(cfg *oidcConfig, claims *oidcClaims) (*models.User, bool) {
-	if claims.Sub == "" {
-		return nil, false
+// ResolveUser 按 subject 精确匹配（多源隔离） → 邮箱绑定 → 按配置自动创建
+func ResolveUser(cfg *Config, claims *Claims, userSvc *services.UserService) (*models.User, bool, error) {
+	if claims == nil || claims.Sub == "" {
+		return nil, false, fmt.Errorf("身份标识 (sub) 不能为空")
 	}
 
-	// 生成通道命名空间标识，防止不同身份源（如 GitHub 数字 ID 与自建 OIDC ID）碰撞
 	qualifiedSub := fmt.Sprintf("%s:%s", cfg.Type, claims.Sub)
 
 	var user models.User
-	// 1. 优先匹配带命名空间的 subject，同时兼容匹配历史无前缀的存量 subject
-	res := database.DB.Where("oidc_subject = ? OR oidc_subject = ?", qualifiedSub, claims.Sub).Limit(1).Find(&user)
+	// 1. 优先匹配 subject（兼容纯 sub 或带命名空间前缀的记录）
+	res := database.DB.Where("oidc_subject = ? OR oidc_subject = ?", claims.Sub, qualifiedSub).Limit(1).Find(&user)
 	if res.Error == nil && res.RowsAffected > 0 {
-		// 平滑升级：若数据库中为无前缀存量记录，自动补齐命名空间
-		if user.OidcSubject == claims.Sub && qualifiedSub != claims.Sub {
-			database.DB.Model(&user).Update("oidc_subject", qualifiedSub)
-		}
-		return &user, false
+		return &user, false, nil
 	}
 
 	// 2. 兼容已存在账号：邮箱相同且尚未绑定过任何第三方 subject，则自动关联
 	if claims.Email != "" {
 		res := database.DB.Where("email = ? AND (oidc_subject = '' OR oidc_subject IS NULL)", claims.Email).Limit(1).Find(&user)
 		if res.Error == nil && res.RowsAffected > 0 {
-			database.DB.Model(&user).Update("oidc_subject", qualifiedSub)
-			return &user, false
+			database.DB.Model(&user).Update("oidc_subject", claims.Sub)
+			return &user, false, nil
 		}
 	}
 
 	if !cfg.AutoCreate {
-		return nil, false
+		return nil, false, ErrUserNotLinked
 	}
 
 	username := claims.PreferredUsername
@@ -72,14 +64,18 @@ func (ac *AuthController) resolveOidcUser(cfg *oidcConfig, claims *oidcClaims) (
 		username = "sso_" + claims.Sub
 	}
 
-	created := ac.userService.CreateOidcUser(ac.uniqueUsername(username), claims.Email, cfg.DefaultRole, qualifiedSub)
-	if created == nil {
-		return nil, false
+	if userSvc == nil {
+		userSvc = services.NewUserService()
 	}
-	return created, true
+	created := userSvc.CreateOidcUser(UniqueUsername(username), claims.Email, cfg.DefaultRole, claims.Sub)
+	if created == nil {
+		return nil, false, fmt.Errorf("自动开通本地账号失败")
+	}
+	return created, true, nil
 }
 
-func (ac *AuthController) uniqueUsername(base string) string {
+// UniqueUsername 确保生成的系统唯一用户名不会与存量账号冲突
+func UniqueUsername(base string) string {
 	candidate := base
 	for i := 0; i < 20; i++ {
 		var count int64
@@ -92,8 +88,8 @@ func (ac *AuthController) uniqueUsername(base string) string {
 	return base + "_" + utils.RandomString(8)
 }
 
-// fetchOAuth2Userinfo 通过 Access Token 调用第三方 Userinfo 端点获取用户信息
-func (ac *AuthController) fetchOAuth2Userinfo(ctx context.Context, cfg *oidcConfig, accessToken string) (*oidcClaims, error) {
+// FetchOAuth2Userinfo 通过 Access Token 调用第三方 Userinfo 端点获取用户信息
+func FetchOAuth2Userinfo(ctx context.Context, cfg *Config, accessToken string) (*Claims, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cfg.UserinfoURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("创建用户信息请求失败: %w", err)
@@ -102,7 +98,7 @@ func (ac *AuthController) fetchOAuth2Userinfo(ctx context.Context, cfg *oidcConf
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Baihu-Panel-SSO/1.0")
 
-	client := newSSOHTTPClient()
+	client := NewSSOHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求用户信息接口失败: %w", err)
@@ -119,14 +115,14 @@ func (ac *AuthController) fetchOAuth2Userinfo(ctx context.Context, cfg *oidcConf
 		return nil, fmt.Errorf("读取用户信息失败: %w", err)
 	}
 
-	claims, err := parseOAuth2Userinfo(body, cfg.UserKey)
+	claims, err := ParseOAuth2Userinfo(body, cfg.UserKey)
 	if err != nil {
 		return nil, err
 	}
 
 	// 针对 GitHub 等平台：若未公开邮箱，尝试请求 /user/emails 补齐主邮箱
 	if claims.Email == "" && strings.Contains(cfg.UserinfoURL, "api.github.com") {
-		if ghEmail := fetchGitHubPrimaryEmail(ctx, accessToken); ghEmail != "" {
+		if ghEmail := FetchGitHubPrimaryEmail(ctx, accessToken); ghEmail != "" {
 			claims.Email = ghEmail
 		}
 	}
@@ -134,14 +130,14 @@ func (ac *AuthController) fetchOAuth2Userinfo(ctx context.Context, cfg *oidcConf
 	return claims, nil
 }
 
-// parseOAuth2Userinfo 从任意 OAuth 2.0 用户信息 JSON 响应中智能提取身份字段
-func parseOAuth2Userinfo(raw []byte, customUserKey string) (*oidcClaims, error) {
+// ParseOAuth2Userinfo 从任意 OAuth 2.0 用户信息 JSON 响应中智能提取身份字段
+func ParseOAuth2Userinfo(raw []byte, customUserKey string) (*Claims, error) {
 	var data map[string]any
 	if err := json.Unmarshal(raw, &data); err != nil {
 		return nil, fmt.Errorf("解析用户信息 JSON 失败: %w", err)
 	}
 
-	claims := &oidcClaims{}
+	claims := &Claims{}
 
 	// 1. 提取唯一标识 Sub
 	if customUserKey != "" {
@@ -200,7 +196,8 @@ func parseOAuth2Userinfo(raw []byte, customUserKey string) (*oidcClaims, error) 
 	return claims, nil
 }
 
-func fetchGitHubPrimaryEmail(ctx context.Context, token string) string {
+// FetchGitHubPrimaryEmail 通过 GitHub /user/emails API 补充已验证的主邮箱
+func FetchGitHubPrimaryEmail(ctx context.Context, token string) string {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user/emails", nil)
 	if err != nil {
 		return ""

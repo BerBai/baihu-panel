@@ -18,6 +18,7 @@ import (
 	"github.com/engigu/baihu-panel/internal/memopt"
 	"github.com/engigu/baihu-panel/internal/models"
 	"github.com/engigu/baihu-panel/internal/models/vo"
+	"github.com/engigu/baihu-panel/internal/oidc"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/services/tasks"
 	"github.com/engigu/baihu-panel/internal/tunnel"
@@ -657,7 +658,7 @@ func (sc *SettingsController) GetSectionSettings(c *gin.Context) {
 		return
 	}
 	settings := sc.settingsService.GetSection(section)
-	utils.Success(c, maskOidcSection(section, settings))
+	utils.Success(c, oidc.MaskSecuritySection(section, settings))
 }
 
 // UpdateSectionSettings 批量更新指定 section 的设置
@@ -680,7 +681,7 @@ func (sc *SettingsController) UpdateSectionSettings(c *gin.Context) {
 	}
 
 	// security 段：客户端密钥按掩码/明文/清空分别处理
-	values = prepareOidcSection(section, values, func(key string) string {
+	values = oidc.PrepareSecuritySection(section, values, func(key string) string {
 		return sc.settingsService.Get(section, key)
 	})
 

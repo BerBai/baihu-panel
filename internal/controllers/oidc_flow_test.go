@@ -9,6 +9,7 @@ import (
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
 	"github.com/engigu/baihu-panel/internal/models"
+	"github.com/engigu/baihu-panel/internal/oidc"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/utils"
 	"github.com/gin-gonic/gin"
@@ -21,10 +22,10 @@ func fullFlow(t *testing.T, idp *fakeIdP, autoCreate bool) (*httptest.ResponseRe
 	t.Helper()
 	ac := setupOidcTest(t, idp, autoCreate)
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
-	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
+	router.GET(constant.PathAuthOidcLogin, ac.OidcLogin)
+	router.GET(constant.PathAuthOidcCallback, ac.OidcCallback)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	req := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcLogin, nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	if w.Code != http.StatusFound {
@@ -32,7 +33,7 @@ func fullFlow(t *testing.T, idp *fakeIdP, autoCreate bool) (*httptest.ResponseRe
 	}
 	state := extractQuery(t, w.Header().Get("Location"), "state")
 
-	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=test-code&state="+state, nil)
+	cbReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcCallback+"?code=test-code&state="+state, nil)
 	for _, c := range w.Result().Cookies() {
 		cbReq.AddCookie(c)
 	}
@@ -117,13 +118,13 @@ func TestOidcLoginBindsExistingSubject(t *testing.T) {
 	}
 
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
-	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
-	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	router.GET(constant.PathAuthOidcLogin, ac.OidcLogin)
+	router.GET(constant.PathAuthOidcCallback, ac.OidcCallback)
+	loginReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcLogin, nil)
 	lw := httptest.NewRecorder()
 	router.ServeHTTP(lw, loginReq)
 	state := extractQuery(t, lw.Header().Get("Location"), "state")
-	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=c2&state="+state, nil)
+	cbReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcCallback+"?code=c2&state="+state, nil)
 	for _, c := range lw.Result().Cookies() {
 		cbReq.AddCookie(c)
 	}
@@ -145,14 +146,14 @@ func TestOidcCallbackRejectsBadState(t *testing.T) {
 	idp := newFakeIdP(t, "baihu-panel", "sub-x", "x@example.com", "xuser")
 	ac := setupOidcTest(t, idp, true)
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
-	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
+	router.GET(constant.PathAuthOidcLogin, ac.OidcLogin)
+	router.GET(constant.PathAuthOidcCallback, ac.OidcCallback)
 
-	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	loginReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcLogin, nil)
 	lw := httptest.NewRecorder()
 	router.ServeHTTP(lw, loginReq)
 
-	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=c&state=forged-state", nil)
+	cbReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcCallback+"?code=c&state=forged-state", nil)
 	for _, c := range lw.Result().Cookies() {
 		cbReq.AddCookie(c)
 	}
@@ -169,10 +170,10 @@ func TestOidcLoginWithRedirectKeepsIdpStateOpaque(t *testing.T) {
 	idp := newFakeIdP(t, "baihu-panel", "sub-redir", "redir@example.com", "rediruser")
 	ac := setupOidcTest(t, idp, true)
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
-	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
+	router.GET(constant.PathAuthOidcLogin, ac.OidcLogin)
+	router.GET(constant.PathAuthOidcCallback, ac.OidcCallback)
 
-	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login?redirect=%2Fdashboard", nil)
+	loginReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcLogin+"?redirect=%2Fdashboard", nil)
 	lw := httptest.NewRecorder()
 	router.ServeHTTP(lw, loginReq)
 	if lw.Code != http.StatusFound {
@@ -183,7 +184,7 @@ func TestOidcLoginWithRedirectKeepsIdpStateOpaque(t *testing.T) {
 		t.Fatalf("发给 IdP 的 state 不应包含回跳路径: %q", state)
 	}
 
-	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=redir-code&state="+state, nil)
+	cbReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcCallback+"?code=redir-code&state="+state, nil)
 	for _, c := range lw.Result().Cookies() {
 		cbReq.AddCookie(c)
 	}
@@ -201,7 +202,7 @@ func TestOidcLoginWithRedirectKeepsIdpStateOpaque(t *testing.T) {
 func TestParseOAuth2Userinfo(t *testing.T) {
 	// 1. GitHub 风格 (id 为数字，login 为用户名)
 	ghJSON := []byte(`{"id": 583231, "login": "octocat", "name": "The Octocat", "email": "octocat@github.com"}`)
-	claims, err := parseOAuth2Userinfo(ghJSON, "")
+	claims, err := oidc.ParseOAuth2Userinfo(ghJSON, "")
 	if err != nil {
 		t.Fatalf("GitHub JSON 解析失败: %v", err)
 	}
@@ -211,7 +212,7 @@ func TestParseOAuth2Userinfo(t *testing.T) {
 
 	// 2. Gitee 风格 (无公开邮箱)
 	giteeJSON := []byte(`{"id": 99999, "login": "gitee_user", "name": "Gitee User"}`)
-	claimsGitee, err := parseOAuth2Userinfo(giteeJSON, "")
+	claimsGitee, err := oidc.ParseOAuth2Userinfo(giteeJSON, "")
 	if err != nil {
 		t.Fatalf("Gitee JSON 解析失败: %v", err)
 	}
@@ -221,7 +222,7 @@ func TestParseOAuth2Userinfo(t *testing.T) {
 
 	// 3. 自定义字段提取 (例如特定企业自建平台使用 uid)
 	customJSON := []byte(`{"uid": "emp_10086", "user_name": "developer", "mail": "dev@corp.internal"}`)
-	claimsCustom, err := parseOAuth2Userinfo(customJSON, "uid")
+	claimsCustom, err := oidc.ParseOAuth2Userinfo(customJSON, "uid")
 	if err != nil {
 		t.Fatalf("自定义 JSON 解析失败: %v", err)
 	}
@@ -272,7 +273,7 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 		constant.KeyOidcType:         constant.SSOTypeOAuth2,
 		constant.KeyOidcClientID:     "mock-client-id",
 		constant.KeyOidcClientSecret: "mock-client-secret",
-		constant.KeyOidcRedirectURL:  "http://panel.local/api/v1/auth/oidc/callback",
+		constant.KeyOidcRedirectURL:  "http://panel.local" + constant.PathAuthOidcCallback,
 		constant.KeyOidcAutoCreate:   "true",
 		constant.KeyOidcDefaultRole:  constant.DefaultRole,
 		constant.KeyOauth2AuthURL:    oauthServer.URL + "/oauth/authorize",
@@ -288,8 +289,8 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 
 	router := gin.New()
 	router.GET("/api/v1/public/settings", pc.GetPublicSettings)
-	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
-	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
+	router.GET(constant.PathAuthOidcLogin, ac.OidcLogin)
+	router.GET(constant.PathAuthOidcCallback, ac.OidcCallback)
 
 	// 3. 验证 public/settings 接口返回正确 sso 名称与类型
 	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/public/settings", nil)
@@ -300,7 +301,7 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 	}
 
 	// 4. 发起登录
-	loginReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/login", nil)
+	loginReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcLogin, nil)
 	loginW := httptest.NewRecorder()
 	router.ServeHTTP(loginW, loginReq)
 	if loginW.Code != http.StatusFound {
@@ -309,7 +310,7 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 	state := extractQuery(t, loginW.Header().Get("Location"), "state")
 
 	// 5. 模拟回调
-	cbReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/callback?code=mock_code&state="+state, nil)
+	cbReq := httptest.NewRequest(http.MethodGet, constant.PathAuthOidcCallback+"?code=mock_code&state="+state, nil)
 	for _, c := range loginW.Result().Cookies() {
 		cbReq.AddCookie(c)
 	}

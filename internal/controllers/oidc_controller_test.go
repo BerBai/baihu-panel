@@ -14,6 +14,7 @@ import (
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/database"
 	"github.com/engigu/baihu-panel/internal/models"
+	"github.com/engigu/baihu-panel/internal/oidc"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/systime"
 	"github.com/gin-gonic/gin"
@@ -106,7 +107,7 @@ func setupOidcTest(t *testing.T, idp *fakeIdP, autoCreate bool) *AuthController 
 		constant.KeyOidcIssuer:       idp.server.URL,
 		constant.KeyOidcClientID:     idp.clientID,
 		constant.KeyOidcClientSecret: "test-secret",
-		constant.KeyOidcRedirectURL:  "http://panel.local/api/v1/auth/oidc/callback",
+		constant.KeyOidcRedirectURL:  "http://panel.local" + constant.PathAuthOidcCallback,
 		constant.KeyOidcAutoCreate:   map[bool]string{true: "true", false: "false"}[autoCreate],
 		constant.KeyOidcDefaultRole:  constant.DefaultRole,
 	} {
@@ -134,7 +135,7 @@ func TestNormalizeIssuer(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		got := NormalizeIssuer(c.input)
+		got := oidc.NormalizeIssuer(c.input)
 		if got != c.expected {
 			t.Errorf("NormalizeIssuer(%q) = %q, expected %q", c.input, got, c.expected)
 		}

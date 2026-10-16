@@ -43,6 +43,12 @@ const (
 	SSOTypeOIDC   = "oidc"
 	SSOTypeOAuth2 = "oauth2"
 
+	// 单点登录 SSO 路由与回调端点常量
+	PathAuthOidcLogin      = "/api/v1/auth/oidc/login"
+	PathAuthOidcCallback   = "/api/v1/auth/oidc/callback"
+	PathAuthOAuth2Login    = "/api/v1/auth/oauth2/login"
+	PathAuthOAuth2Callback = "/api/v1/auth/oauth2/callback"
+
 	KeyOidcEnabled      = "oidc_enabled"
 	KeyOidcType         = "oidc_type" // "oidc" 或 "oauth2"（默认 "oidc"）
 	KeyOidcIssuer       = "oidc_issuer"

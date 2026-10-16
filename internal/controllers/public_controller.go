@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"github.com/engigu/baihu-panel/internal/constant"
+	"github.com/engigu/baihu-panel/internal/oidc"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/utils"
 	"github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func (pc *PublicController) GetPublicSettings(c *gin.Context) {
 	}
 
 	// 提取轻量无敏感信息的 SSO 状态（type、name、enabled）
-	ssoStatus := ResolveSSOStatus(pc.settingsService)
+	ssoStatus := oidc.ResolveSSOStatus(pc.settingsService)
 
 	utils.Success(c, gin.H{
 		constant.KeyTitle:    title,

@@ -1,138 +1,68 @@
 package controllers
 
 import (
-	"context"
-	"fmt"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/eventbus"
 	"github.com/engigu/baihu-panel/internal/logger"
 	"github.com/engigu/baihu-panel/internal/middleware"
+	"github.com/engigu/baihu-panel/internal/oidc"
 	"github.com/engigu/baihu-panel/internal/utils"
-	"golang.org/x/oauth2"
-
 	"github.com/gin-gonic/gin"
+	"golang.org/x/oauth2"
 )
 
+const (
+	oidcStateCookie    = "BHOIDCState"
+	oidcVerifierCookie = "BHOIDCVerifier"
+	oidcStateTTL       = 10 * time.Minute
+)
 
-
-// OidcTestRequest 连通性测试请求参数
-type OidcTestRequest struct {
-	Type        string `json:"type"`
-	Issuer      string `json:"issuer"`
-	AuthURL     string `json:"oauth2_auth_url"`
-	TokenURL    string `json:"oauth2_token_url"`
-	UserinfoURL string `json:"oauth2_userinfo_url"`
-}
-
-// OidcTest 供设置界面测试单点登录提供方网络连通性与发现文档
-func (ac *AuthController) OidcTest(c *gin.Context) {
-	var req OidcTestRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		utils.BadRequest(c, "请求参数格式错误")
-		return
-	}
-
-	httpClient := newSSOHTTPClient()
-
-	if req.Type == constant.SSOTypeOAuth2 || req.AuthURL != "" {
-		endpoints := map[string]string{
-			"授权端点": req.AuthURL,
-			"令牌端点": req.TokenURL,
-			"用户信息": req.UserinfoURL,
-		}
-		for name, url := range endpoints {
-			u := strings.TrimSpace(url)
-			if u == "" {
-				utils.BadRequest(c, fmt.Sprintf("%s 不能为空", name))
-				return
-			}
-			reqCtx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-			reqObj, err := http.NewRequestWithContext(reqCtx, http.MethodGet, u, nil)
-			if err != nil {
-				cancel()
-				utils.ServerError(c, fmt.Sprintf("%s 地址非法: %v", name, err))
-				return
-			}
-			reqObj.Header.Set("User-Agent", "Baihu-Panel-SSO/1.0")
-			resp, err := httpClient.Do(reqObj)
-			cancel()
-			if err != nil {
-				utils.ServerError(c, fmt.Sprintf("%s 无法连接: %v", name, err))
-				return
-			}
-			resp.Body.Close()
-		}
-		utils.Success(c, gin.H{
-			"message": "OAuth 2.0 端点网络连通性测试通过",
-		})
-		return
-	}
-
-	// OIDC 模式
-	issuer := NormalizeIssuer(req.Issuer)
-	if issuer == "" {
-		utils.BadRequest(c, "Issuer（发现文档地址）不能为空")
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
-	defer cancel()
-
-	ctx = oidc.ClientContext(ctx, httpClient)
-	ctx = oidc.InsecureIssuerURLContext(ctx, issuer)
-
-	provider, err := oidc.NewProvider(ctx, issuer)
-	if err != nil {
-		altIssuer := strings.TrimRight(issuer, "/")
-		if altIssuer == issuer {
-			altIssuer = issuer + "/"
-		}
-		altCtx := oidc.InsecureIssuerURLContext(ctx, altIssuer)
-		if p2, err2 := oidc.NewProvider(altCtx, altIssuer); err2 == nil {
-			provider = p2
-			err = nil
-		}
-	}
-	if err != nil {
-		errDetail := err.Error()
-		if strings.Contains(errDetail, "404") && strings.Contains(errDetail, "API endpoint not found") {
-			utils.ServerError(c, fmt.Sprintf("连接提供方失败 (404 Not Found)。当前身份系统（如 Pocket ID）端点未响应发现文档。请检查：1. Issuer 只需填写根域名（如 https://id.example.com，不可包含 /.well-known 等后缀）；2. 确保反向代理已将 /.well-known 转发至认证容器；或建议直接切换为【通用 OAuth 2.0】模式手动配置端点。原始错误: %s", errDetail))
-			return
-		}
-		utils.ServerError(c, "连接提供方失败: "+errDetail)
-		return
-	}
-
-	claims := map[string]interface{}{}
-	_ = provider.Claims(&claims)
-
-	utils.Success(c, gin.H{
-		"message":   "发现文档解析成功，OIDC 通道连通正常",
-		"endpoints": provider.Endpoint(),
-		"claims":    claims,
+// logSSOFailure 统一记录单点登录失败事件
+func (ac *AuthController) logSSOFailure(c *gin.Context, username, message string) {
+	eventbus.DefaultBus.Publish(eventbus.Event{
+		Type: constant.EventUserLogin,
+		Payload: map[string]interface{}{
+			"ip":        c.ClientIP(),
+			"username":  username,
+			"userAgent": c.GetHeader("User-Agent"),
+			"status":    "failed",
+			"message":   "单点登录失败：" + message,
+		},
 	})
 }
 
+// getSSOConfig 获取当前生效的单点登录配置（按偏好通道加载，未开启时自动跨通道回退）
+func (ac *AuthController) getSSOConfig(c *gin.Context, preferredType ...string) *oidc.Config {
+	pref := ""
+	if len(preferredType) > 0 {
+		pref = preferredType[0]
+	}
+	return oidc.ResolveActiveConfig(ac.settingsService, pref, c)
+}
+
+// getOidcConfig 加载标准 OIDC 配置（未启用时自动回退至通用 OAuth 2.0）
+func (ac *AuthController) getOidcConfig(c *gin.Context) *oidc.Config {
+	return ac.getSSOConfig(c, constant.SSOTypeOIDC)
+}
+
+// getOAuth2Config 加载通用 OAuth 2.0 配置（未启用时自动回退至标准 OIDC）
+func (ac *AuthController) getOAuth2Config(c *gin.Context) *oidc.Config {
+	return ac.getSSOConfig(c, constant.SSOTypeOAuth2)
+}
+
 // startSSOLogin 发起单点登录跳转流程（统一支持 OIDC 与通用 OAuth 2.0）
-func (ac *AuthController) startSSOLogin(c *gin.Context, cfg *oidcConfig) {
+func (ac *AuthController) startSSOLogin(c *gin.Context, cfg *oidc.Config) {
 	if constant.DemoMode {
 		utils.BadRequest(c, "演示模式下禁止使用单点登录")
 		return
 	}
 	if cfg == nil {
 		utils.BadRequest(c, "该单点登录通道未启用或配置不完整")
-		return
-	}
-
-	_, oauthCfg, err := ac.oidcProviderFor(c.Request.Context(), cfg)
-	if err != nil {
-		logger.Errorf("[SSO] 无法连接单点登录提供方 (Type: %s): %v", cfg.Type, err)
-		utils.ServerError(c, "无法连接单点登录提供方: "+err.Error())
 		return
 	}
 
@@ -148,12 +78,18 @@ func (ac *AuthController) startSSOLogin(c *gin.Context, cfg *oidcConfig) {
 	c.SetCookie(oidcStateCookie, state+"."+cfg.Type+"."+postLogin, int(oidcStateTTL.Seconds()), "/", "", false, true)
 	c.SetCookie(oidcVerifierCookie, verifier, int(oidcStateTTL.Seconds()), "/", "", false, true)
 
-	authURL := oauthCfg.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier))
+	authURL, err := oidc.BuildAuthURL(c.Request.Context(), cfg, state, verifier)
+	if err != nil {
+		logger.Errorf("[SSO] 无法连接单点登录提供方 (Type: %s): %v", cfg.Type, err)
+		utils.ServerError(c, "无法连接单点登录提供方: "+err.Error())
+		return
+	}
+
 	c.Redirect(302, authURL)
 }
 
 // handleSSOCallback 处理单点登录授权回调（统一支持 OIDC 与通用 OAuth 2.0）
-func (ac *AuthController) handleSSOCallback(c *gin.Context, defaultCfg *oidcConfig) {
+func (ac *AuthController) handleSSOCallback(c *gin.Context, defaultCfg *oidc.Config) {
 	if constant.DemoMode {
 		utils.BadRequest(c, "演示模式下禁止使用单点登录")
 		return
@@ -196,75 +132,27 @@ func (ac *AuthController) handleSSOCallback(c *gin.Context, defaultCfg *oidcConf
 
 	// 识别目标通道配置
 	cfg := defaultCfg
-	if channelType == constant.SSOTypeOAuth2 {
-		if o2Cfg := ac.getOAuth2Config(c); o2Cfg != nil {
-			cfg = o2Cfg
-		}
-	} else if channelType == constant.SSOTypeOIDC {
-		if oidcCfg := ac.getOidcConfig(c); oidcCfg != nil {
-			cfg = oidcCfg
+	if channelType != "" {
+		if matched := ac.getSSOConfig(c, channelType); matched != nil {
+			cfg = matched
 		}
 	}
 	if cfg == nil {
-		cfg = ac.oidcConfig(c)
+		cfg = ac.getSSOConfig(c)
 	}
 	if cfg == nil {
 		utils.BadRequest(c, "单点登录通道未启用或配置不完整")
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
-	defer cancel()
-
-	verifierObj, oauthCfg, err := ac.oidcProviderFor(ctx, cfg)
+	user, created, err := oidc.ExchangeAndResolve(c.Request.Context(), cfg, code, verifier, ac.userService)
 	if err != nil {
-		logger.Errorf("[SSO] 回调阶段无法连接单点登录提供方: %v", err)
-		utils.ServerError(c, "无法连接单点登录提供方: "+err.Error())
-		return
-	}
-
-	token, err := oauthCfg.Exchange(ctx, code, oauth2.VerifierOption(verifier))
-	if err != nil {
-		token, err = oauthCfg.Exchange(ctx, code)
-	}
-	if err != nil {
-		ac.logOidcFailure(c, "", "授权码换取令牌失败: "+err.Error())
-		utils.Unauthorized(c, "授权码换取令牌失败")
-		return
-	}
-
-	var claims oidcClaims
-	if cfg.Type == constant.SSOTypeOAuth2 {
-		cObj, err := ac.fetchOAuth2Userinfo(ctx, cfg, token.AccessToken)
-		if err != nil {
-			ac.logOidcFailure(c, "", "获取用户信息失败: "+err.Error())
-			utils.Unauthorized(c, "获取用户信息失败: "+err.Error())
+		ac.logSSOFailure(c, "", err.Error())
+		if errors.Is(err, oidc.ErrUserNotLinked) {
+			utils.Forbidden(c, err.Error())
 			return
 		}
-		claims = *cObj
-	} else {
-		rawIDToken, ok := token.Extra("id_token").(string)
-		if !ok || rawIDToken == "" {
-			utils.Unauthorized(c, "OIDC 未返回 id_token")
-			return
-		}
-
-		idToken, err := verifierObj.Verify(ctx, rawIDToken)
-		if err != nil {
-			ac.logOidcFailure(c, "", "id_token 校验失败")
-			utils.Unauthorized(c, "id_token 校验失败")
-			return
-		}
-		if err := idToken.Claims(&claims); err != nil {
-			utils.Unauthorized(c, "无法解析 OIDC 身份信息")
-			return
-		}
-	}
-
-	user, created := ac.resolveOidcUser(cfg, &claims)
-	if user == nil {
-		ac.logOidcFailure(c, claims.PreferredUsername, "未绑定账号且未开启自动创建")
-		utils.Forbidden(c, "当前第三方身份未绑定任何系统账号，请联系管理员")
+		utils.Unauthorized(c, err.Error())
 		return
 	}
 
@@ -302,22 +190,47 @@ func (ac *AuthController) handleSSOCallback(c *gin.Context, defaultCfg *oidcConf
 
 // OidcLogin 重定向到 OIDC 授权端点
 func (ac *AuthController) OidcLogin(c *gin.Context) {
-	ac.startSSOLogin(c, ac.getOidcConfig(c))
+	ac.startSSOLogin(c, ac.getSSOConfig(c, constant.SSOTypeOIDC))
 }
 
 // OidcCallback 处理 OIDC 授权回调
 func (ac *AuthController) OidcCallback(c *gin.Context) {
-	ac.handleSSOCallback(c, ac.getOidcConfig(c))
+	ac.handleSSOCallback(c, ac.getSSOConfig(c, constant.SSOTypeOIDC))
 }
 
 // OAuth2Login 重定向到通用 OAuth 2.0 授权端点
 func (ac *AuthController) OAuth2Login(c *gin.Context) {
-	ac.startSSOLogin(c, ac.getOAuth2Config(c))
+	ac.startSSOLogin(c, ac.getSSOConfig(c, constant.SSOTypeOAuth2))
 }
 
 // OAuth2Callback 处理通用 OAuth 2.0 授权回调
 func (ac *AuthController) OAuth2Callback(c *gin.Context) {
-	ac.handleSSOCallback(c, ac.getOAuth2Config(c))
+	ac.handleSSOCallback(c, ac.getSSOConfig(c, constant.SSOTypeOAuth2))
+}
+
+// OidcTest 供设置界面测试单点登录提供方网络连通性与发现文档
+func (ac *AuthController) OidcTest(c *gin.Context) {
+	var req oidc.TestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "请求参数格式错误")
+		return
+	}
+
+	result, err := oidc.TestConnection(c.Request.Context(), req)
+	if err != nil {
+		if strings.Contains(err.Error(), "404") || strings.Contains(err.Error(), "连接提供方失败") || strings.Contains(err.Error(), "无法连接") {
+			utils.ServerError(c, err.Error())
+			return
+		}
+		if strings.Contains(err.Error(), "不能为空") {
+			utils.BadRequest(c, err.Error())
+			return
+		}
+		utils.ServerError(c, err.Error())
+		return
+	}
+
+	utils.Success(c, result)
 }
 
 // OAuth2Test 供前端测试通用 OAuth 2.0 接口连通性

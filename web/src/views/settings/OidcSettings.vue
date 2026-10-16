@@ -272,15 +272,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <Card class="shadow-sm flex flex-col justify-between pt-4.5 pb-5">
+  <Card class="shadow-sm flex flex-col justify-between pt-4 pb-5">
     <!-- 卡片头部：图标、标题、副标题与主开关 -->
-    <CardHeader class="pb-3 pt-0 px-5">
-      <div class="flex items-start justify-between gap-4">
-        <div class="space-y-1">
-          <div class="flex items-center gap-2">
+    <CardHeader class="pb-3 pt-0 px-4 sm:px-5">
+      <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-4">
+        <div class="space-y-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
             <CardTitle class="text-base flex items-center gap-2">
-              <Fingerprint class="w-4 h-4 text-sky-500" />
-              <span>统一单点登录 (SSO)</span>
+              <Fingerprint class="w-4 h-4 text-sky-500 shrink-0" />
+              <span class="whitespace-nowrap font-bold">统一单点登录 (SSO)</span>
             </CardTitle>
             <Badge
               v-if="demoMode"
@@ -302,8 +302,8 @@ onMounted(() => {
           </CardDescription>
         </div>
 
-        <!-- 右上角：对接指引与主开关 -->
-        <div class="flex items-center gap-3 shrink-0">
+        <!-- 操作区：对接指引与主开关 -->
+        <div class="flex items-center justify-between sm:justify-end gap-3 shrink-0 pt-1 sm:pt-0">
           <button
             type="button"
             @click="toggleGuide"
@@ -327,7 +327,7 @@ onMounted(() => {
       </div>
     </CardHeader>
 
-    <CardContent class="flex-1 flex flex-col justify-between px-5 pb-0 pt-0 space-y-4">
+    <CardContent class="flex-1 flex flex-col justify-between px-4 sm:px-5 pb-0 pt-0 space-y-4">
       <div class="space-y-3.5">
         <!-- 演示模式警示条 -->
         <div
@@ -340,14 +340,14 @@ onMounted(() => {
 
         <!-- 状态指示卡片（与上方卡片保持一致的高级状态面板，集成互联风格折叠/展开入口） -->
         <div
-          class="p-3.5 rounded-xl border flex items-center justify-between transition-all"
+          class="p-3 sm:p-3.5 rounded-xl border flex items-center justify-between transition-all gap-2"
           :class="form.enabled
             ? 'border-emerald-500/20 bg-emerald-500/5'
             : 'border-border/70 bg-muted/20'"
         >
-          <div class="flex items-center gap-3 min-w-0">
+          <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div
-              class="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+              class="w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0"
               :class="form.enabled
                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                 : 'bg-muted text-muted-foreground border border-border/60'"
@@ -356,7 +356,7 @@ onMounted(() => {
               <Globe v-else class="w-4 h-4" />
             </div>
             <div class="min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span class="text-xs font-bold text-foreground truncate">
                   {{ form.enabled
                     ? (form.type === 'oauth2' ? (form.oauth2_name || '通用 OAuth 2.0') : '标准 OpenID Connect')
@@ -381,7 +381,7 @@ onMounted(() => {
           </div>
 
           <!-- 右侧：在线状态与展开/收起按钮 -->
-          <div class="flex items-center gap-2.5 shrink-0 pl-2">
+          <div class="flex items-center gap-2 sm:gap-2.5 shrink-0 pl-1 sm:pl-2">
             <div
               v-if="form.enabled"
               class="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium"
@@ -396,10 +396,10 @@ onMounted(() => {
             <Button
               variant="outline"
               size="sm"
-              class="text-xs h-7.5 px-2.5 gap-1 shadow-xs bg-background hover:bg-muted/70 transition-all"
+              class="text-xs h-7.5 px-2 sm:px-2.5 gap-1 shadow-xs bg-background hover:bg-muted/70 transition-all shrink-0"
               @click="configExpanded = !configExpanded"
             >
-              <span>{{ configExpanded ? '收起配置' : '配置参数' }}</span>
+              <span class="whitespace-nowrap">{{ configExpanded ? '收起配置' : '配置参数' }}</span>
               <ChevronUp v-if="configExpanded" class="h-3.5 w-3.5" />
               <ChevronDown v-else class="h-3.5 w-3.5" />
             </Button>
@@ -422,7 +422,7 @@ onMounted(() => {
                 <b class="text-foreground">标准 OIDC 模式:</b> Pocket ID、Keycloak、Authentik 等，只需填入 Issuer，发现文档自动嗅探。
               </div>
               <div class="p-2 rounded-lg bg-muted/40 border border-border/40">
-                <b class="text-foreground">通用 OAuth 2.0 模式:</b> GitHub、Gitee、GitLab 或自建服务，点击右侧预设按钮即可秒级填充端点。
+                <b class="text-foreground">通用 OAuth 2.0 模式:</b> GitHub、Gitee、GitLab 或自建服务，点击预设按钮即可秒级填充端点。
               </div>
               <div class="p-2 rounded-lg bg-muted/40 border border-border/40 col-span-1 sm:col-span-2">
                 <b class="text-foreground">回调重定向地址 (Callback):</b> 必须在第三方应用管理后台严格登记本卡片显示的回调地址。
@@ -431,41 +431,41 @@ onMounted(() => {
           </div>
 
           <!-- 协议模式切换与快捷预设条（一体化紧凑控制栏） -->
-          <div class="p-2.5 px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
+          <div class="p-2.5 sm:p-3 sm:px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-3">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+              <div class="flex items-center gap-1.5 shrink-0">
                 <Layers class="w-4 h-4 text-sky-500 shrink-0" />
-                <span class="text-xs font-semibold text-foreground">认证协议:</span>
+                <span class="text-xs font-semibold text-foreground whitespace-nowrap">认证协议:</span>
               </div>
-              <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
+              <div class="grid grid-cols-2 sm:inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs w-full sm:w-auto">
                 <button
                   type="button"
                   @click="!demoMode && (form.type = 'oidc')"
-                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 text-xs select-none"
+                  class="px-2.5 py-1.5 sm:py-1 rounded-md transition-all flex items-center justify-center gap-1.5 text-xs select-none"
                   :class="form.type === 'oidc' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
                 >
-                  <Globe class="w-3.5 h-3.5" />
-                  <span>标准 OIDC</span>
+                  <Globe class="w-3.5 h-3.5 shrink-0" />
+                  <span class="whitespace-nowrap">标准 OIDC</span>
                 </button>
                 <button
                   type="button"
                   @click="!demoMode && (form.type = 'oauth2')"
-                  class="px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 text-xs select-none"
+                  class="px-2.5 py-1.5 sm:py-1 rounded-md transition-all flex items-center justify-center gap-1.5 text-xs select-none"
                   :class="form.type === 'oauth2' ? 'bg-primary text-primary-foreground font-medium shadow-xs' : 'text-muted-foreground hover:text-foreground'"
                 >
-                  <Zap class="w-3.5 h-3.5" />
-                  <span>通用 OAuth 2.0</span>
+                  <Zap class="w-3.5 h-3.5 shrink-0" />
+                  <span class="whitespace-nowrap">通用 OAuth 2.0</span>
                 </button>
               </div>
             </div>
 
             <!-- OAuth2 模式下右侧直接无缝展现快捷预设 -->
-            <div v-if="form.type === 'oauth2'" class="flex items-center gap-2 flex-wrap">
-              <span class="text-[11px] text-muted-foreground flex items-center gap-1">
+            <div v-if="form.type === 'oauth2'" class="flex items-center gap-2 flex-wrap pt-1 sm:pt-0 border-t border-border/40 sm:border-0">
+              <span class="text-[11px] text-muted-foreground flex items-center gap-1 shrink-0">
                 <Sparkles class="w-3 h-3 text-amber-500" />
                 <span>快速套用:</span>
               </span>
-              <div class="flex items-center gap-1.5">
+              <div class="flex items-center gap-1.5 flex-wrap">
                 <button
                   v-for="p in oauth2Presets"
                   :key="p.name"
@@ -480,7 +480,7 @@ onMounted(() => {
             </div>
 
             <!-- OIDC 模式下右侧展现支持的身份源说明 -->
-            <div v-else class="text-[11px] text-muted-foreground flex items-center gap-1">
+            <div v-else class="text-[11px] text-muted-foreground flex items-center gap-1 pt-0.5 sm:pt-0">
               <span>支持 Pocket ID / Keycloak / Authentik 等</span>
             </div>
           </div>
@@ -488,9 +488,9 @@ onMounted(() => {
           <!-- OIDC 专有模式表单 -->
           <div v-if="form.type === 'oidc'" class="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-0.5">
             <div class="space-y-1.5">
-              <div class="flex items-center justify-between">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
                 <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
-                  <Globe class="w-3.5 h-3.5 text-muted-foreground" />
+                  <Globe class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                   <span>Issuer（发现文档地址）</span>
                   <span class="text-destructive">*</span>
                 </Label>
@@ -499,7 +499,7 @@ onMounted(() => {
                   :href="discoveryUrl"
                   target="_blank"
                   rel="noopener noreferrer"
-                  class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5"
+                  class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5 shrink-0"
                 >
                   <span>检验发现文档</span>
                   <ExternalLink class="w-2.5 h-2.5" />
@@ -515,13 +515,13 @@ onMounted(() => {
 
             <!-- 回调地址 (Redirect URI) 带内嵌复制 -->
             <div class="space-y-1.5">
-              <div class="flex items-center justify-between">
-                <Label class="text-xs font-medium text-foreground">回调重定向地址 (Redirect URI)</Label>
+              <div class="flex items-center justify-between gap-2">
+                <Label class="text-xs font-medium text-foreground truncate">回调重定向地址 (Redirect URI)</Label>
                 <button
                   v-if="form.redirect_url"
                   type="button"
                   @click="resetDefaultRedirectUrl"
-                  class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+                  class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 shrink-0"
                   title="重置为默认自动推导地址"
                 >
                   <RotateCcw class="w-2.5 h-2.5" />
@@ -689,18 +689,19 @@ onMounted(() => {
 
           <!-- 全模式通用：附加 Scope -->
           <div class="space-y-1.5">
-            <div class="flex items-center justify-between">
-              <Label class="text-xs font-medium text-foreground">
-                授权范围 (Scope) <span class="text-[10px] text-muted-foreground font-normal">（以空格或逗号分隔）</span>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
+                <span>授权范围 (Scope)</span>
+                <span class="text-[10px] text-muted-foreground font-normal">（以空格或逗号分隔）</span>
               </Label>
-              <div class="flex items-center gap-1">
+              <div class="flex items-center gap-1 flex-wrap">
                 <button
                   v-for="s in commonScopes"
                   :key="s"
                   type="button"
                   @click="addScope(s)"
                   :disabled="demoMode || loading"
-                  class="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border/50 transition-colors disabled:opacity-50"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 text-foreground border border-border/50 transition-colors disabled:opacity-50 shrink-0"
                 >
                   +{{ s }}
                 </button>
@@ -715,7 +716,7 @@ onMounted(() => {
           </div>
 
           <!-- 全模式通用：建号策略与默认角色 -->
-          <div class="p-2.5 px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div class="p-2.5 px-3.5 rounded-xl border border-border/70 bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div class="flex items-center gap-2.5">
               <Switch
                 v-model="form.auto_create"
@@ -729,7 +730,7 @@ onMounted(() => {
             </div>
 
             <!-- 角色切换器（行内 Segmented Control） -->
-            <div v-if="form.auto_create" class="flex items-center gap-2 self-start sm:self-center">
+            <div v-if="form.auto_create" class="flex items-center justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t border-border/40 sm:border-0">
               <span class="text-[11px] text-muted-foreground shrink-0">分配角色:</span>
               <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
                 <button
@@ -762,7 +763,7 @@ onMounted(() => {
             <Button
               @click="save"
               :disabled="saving || loading || demoMode"
-              class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5"
+              class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5 w-full sm:w-auto"
             >
               <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
               <Save v-else class="h-3.5 w-3.5" />

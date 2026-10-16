@@ -26,7 +26,8 @@ import {
   CalendarClock,
   Save,
   Sparkles,
-  Cpu
+  Cpu,
+  KeyRound
 } from 'lucide-vue-next'
 import {
   AlertDialog,
@@ -273,14 +274,14 @@ onMounted(loadSettings)
       <div class="space-y-6">
         <!-- 模块 1: 站点外观与基础配置 -->
         <Card class="shadow-sm">
-          <CardHeader class="pb-4">
+          <CardHeader class="pb-4 px-4 sm:px-6">
             <CardTitle class="flex items-center gap-2 text-base">
               <Globe class="w-4 h-4 text-primary" />
               <span>站点外观与基础配置</span>
             </CardTitle>
             <CardDescription>自定义站点品牌标识、标题标语及系统常规运行参数</CardDescription>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="space-y-4 px-4 sm:px-6">
             <div class="space-y-1.5">
               <Label class="text-xs font-medium text-foreground">站点标题</Label>
               <Input v-model="form.title" placeholder="白虎面板" class="h-9" />
@@ -319,69 +320,83 @@ onMounted(loadSettings)
 
         <!-- 模块 2: OpenAPI 开放接口能力 -->
         <Card class="shadow-sm">
-          <CardHeader class="pb-4 space-y-2">
-            <div class="flex items-center justify-between gap-3">
-              <CardTitle class="flex items-center gap-2 text-sm sm:text-base font-semibold min-w-0">
-                <Code2 class="w-4 h-4 text-sky-500 shrink-0" />
-                <span class="truncate">OpenAPI 接口与集成</span>
-                <Badge
-                  v-if="isDemoMode"
-                  variant="destructive"
-                  class="text-[10px] px-1.5 py-0 font-normal shrink-0"
-                >
-                  演示模式禁用
-                </Badge>
-                <Badge v-else variant="secondary" class="font-normal text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 shrink-0">
-                  推荐接入
-                </Badge>
-              </CardTitle>
-              <div class="flex items-center gap-2 shrink-0">
-                <Switch v-model="form.openapi_enabled" id="openapi-enabled" :disabled="isDemoMode" />
-                <Label for="openapi-enabled" class="text-xs cursor-pointer">开启</Label>
+          <CardHeader class="pb-3.5 space-y-1.5 px-4 sm:px-6">
+            <div class="flex items-start justify-between gap-3">
+              <div class="space-y-1 min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <CardTitle class="flex items-center gap-2 text-sm sm:text-base font-semibold">
+                    <Code2 class="w-4 h-4 text-sky-500 shrink-0" />
+                    <span class="whitespace-nowrap font-bold">OpenAPI 接口与集成</span>
+                  </CardTitle>
+                  <Badge
+                    v-if="isDemoMode"
+                    variant="destructive"
+                    class="text-[10px] px-1.5 py-0 font-normal shrink-0"
+                  >
+                    演示模式禁用
+                  </Badge>
+                  <Badge v-else variant="secondary" class="font-normal text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 shrink-0">
+                    推荐接入
+                  </Badge>
+                </div>
+                <CardDescription class="text-xs text-muted-foreground pt-0.5">
+                  提供标准 RESTful API 与智能体 MCP 协议接入
+                </CardDescription>
               </div>
-            </div>
-            <div class="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span class="truncate">通过 Bearer Token 实现外部系统调用</span>
-              <div class="flex items-center gap-2.5 shrink-0">
-                <a
-                  href="#"
-                  @click.prevent="openMcpDocs"
-                  class="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline"
-                >
-                  <Sparkles class="w-3 h-3 text-purple-500" />
-                  MCP 指南
-                  <ExternalLink class="w-2.5 h-2.5" />
-                </a>
-                <a
-                  href="#"
-                  @click.prevent="openSwaggerDocs"
-                  class="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  API 文档
-                  <ExternalLink class="w-2.5 h-2.5" />
-                </a>
+              <div class="flex items-center gap-2 shrink-0 pt-0.5">
+                <Switch v-model="form.openapi_enabled" id="openapi-enabled" :disabled="isDemoMode" />
+                <Label for="openapi-enabled" class="text-xs cursor-pointer select-none">
+                  {{ form.openapi_enabled ? '已开启' : '开启' }}
+                </Label>
               </div>
             </div>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="space-y-3.5 px-4 sm:px-6">
             <!-- 演示模式警示条 -->
             <div v-if="isDemoMode" class="flex items-center gap-2 p-2.5 rounded-xl bg-destructive/10 text-destructive text-xs">
               <AlertTriangle class="h-4 w-4 shrink-0" />
               <span>演示模式下已锁定 OpenAPI 接口服务与访问凭据。</span>
             </div>
 
-            <p class="text-xs text-muted-foreground leading-relaxed">
-              外部请求时需携带请求头
-              <code class="bg-muted px-1.5 py-0.5 rounded text-[11px] font-mono select-all inline-block break-all">Authorization: Bearer &lt;Token&gt;</code>。
-            </p>
+            <!-- 调用规范看板：将散乱请求头说明与 API 文档链接一体化融合 -->
+            <div class="p-2.5 rounded-xl border bg-muted/30 border-border/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div class="flex items-center gap-2 min-w-0">
+                <ShieldCheck class="w-4 h-4 text-sky-500 shrink-0" />
+                <span class="text-muted-foreground text-[11px] shrink-0">鉴权请求头:</span>
+                <code class="text-[11px] font-mono text-foreground bg-background px-1.5 py-0.5 rounded border border-border/40 font-medium truncate select-all">
+                  Authorization: Bearer &lt;Token&gt;
+                </code>
+              </div>
+              <a
+                href="#"
+                @click.prevent="openSwaggerDocs"
+                class="flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400 hover:underline shrink-0 self-end sm:self-auto font-medium"
+              >
+                <span>接口 API 文档</span>
+                <ExternalLink class="w-2.5 h-2.5" />
+              </a>
+            </div>
 
+            <!-- 凭据表单项 -->
             <div class="space-y-3">
               <div class="space-y-1.5">
-                <Label class="text-xs font-medium text-foreground">Token 密钥</Label>
+                <div class="flex items-center justify-between">
+                  <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>Token 访问密钥</span>
+                  </Label>
+                  <span v-if="form.openapi_token" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span>已生成凭据</span>
+                  </span>
+                  <span v-else class="text-[10px] text-amber-500">
+                    未生成凭据
+                  </span>
+                </div>
                 <div class="flex items-center space-x-2">
                   <Input
                     v-model="form.openapi_token"
-                    placeholder="点击生成 32 位 Token"
+                    placeholder="点击右侧按钮生成 32 位 Token"
                     class="text-xs sm:text-sm h-9 font-mono flex-1 min-w-0"
                     :disabled="isDemoMode || !form.openapi_enabled"
                   />
@@ -389,9 +404,9 @@ onMounted(loadSettings)
                     type="button"
                     variant="outline"
                     size="icon"
-                    class="h-9 w-9 shrink-0"
+                    class="h-9 w-9 shrink-0 shadow-xs"
                     @click="isDemoMode ? toast.error('演示模式下禁止生成 OpenAPI Token') : (showOpenapiConfirmDialog = true)"
-                    :title="isDemoMode ? '演示模式禁用' : '随机生成'"
+                    :title="isDemoMode ? '演示模式禁用' : '随机生成全新 Token'"
                     :disabled="isDemoMode || !form.openapi_enabled"
                   >
                     <RefreshCw class="w-4 h-4" />
@@ -400,7 +415,7 @@ onMounted(loadSettings)
                     type="button"
                     variant="outline"
                     size="icon"
-                    class="h-9 w-9 shrink-0"
+                    class="h-9 w-9 shrink-0 shadow-xs"
                     @click="copyOpenapiToken"
                     :title="isDemoMode ? '演示模式禁用' : '复制 Token'"
                     :disabled="isDemoMode || !form.openapi_token || !form.openapi_enabled"
@@ -411,24 +426,29 @@ onMounted(loadSettings)
               </div>
 
               <div class="space-y-1.5">
-                <Label class="text-xs font-medium text-foreground">截止有效期</Label>
+                <div class="flex items-center justify-between">
+                  <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <Clock class="w-3.5 h-3.5 text-muted-foreground" />
+                    <span>截止有效期</span>
+                  </Label>
+                  <span class="text-[10px] text-muted-foreground">置空代表永不过期</span>
+                </div>
                 <Input
                   v-model="form.openapi_token_expire"
                   type="date"
                   class="w-full dark:[color-scheme:dark] h-9 text-xs sm:text-sm"
                   :disabled="isDemoMode || !form.openapi_enabled"
                 />
-                <p class="text-[10px] text-muted-foreground">超过此日期后 Token 将失效，置空代表永不过期</p>
               </div>
             </div>
 
             <!-- 模块 2.1: 模型上下文协议 (MCP) 快捷连接指引 -->
-            <div class="pt-3 border-t border-border/60">
-              <div class="p-3 rounded-xl border bg-gradient-to-br from-purple-500/5 via-background to-sky-500/5 border-purple-500/25 space-y-2.5">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="flex items-center gap-1.5 min-w-0">
+            <div class="pt-2 border-t border-border/60">
+              <div class="p-3.5 rounded-xl border bg-gradient-to-br from-purple-500/5 via-background to-sky-500/5 border-purple-500/25 space-y-3">
+                <div class="flex items-center justify-between gap-2 flex-wrap">
+                  <div class="flex items-center gap-1.5 shrink-0">
                     <Sparkles class="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                    <span class="text-xs font-semibold text-foreground">AI 客户端连接 (MCP)</span>
+                    <span class="text-xs font-bold text-foreground whitespace-nowrap">AI 客户端连接 (MCP)</span>
                     <Badge
                       v-if="isDemoMode"
                       variant="destructive"
@@ -440,13 +460,24 @@ onMounted(loadSettings)
                       Cursor / Claude
                     </Badge>
                   </div>
-                  <button
-                    type="button"
-                    @click="showMcpSnippet = !showMcpSnippet"
-                    class="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5 shrink-0"
-                  >
-                    {{ showMcpSnippet ? '收起配置' : '配置示例' }}
-                  </button>
+                  <div class="flex items-center gap-2.5 shrink-0 text-xs">
+                    <a
+                      href="#"
+                      @click.prevent="openMcpDocs"
+                      class="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5"
+                    >
+                      <span>MCP 指南</span>
+                      <ExternalLink class="w-2.5 h-2.5" />
+                    </a>
+                    <span class="text-border">|</span>
+                    <button
+                      type="button"
+                      @click="showMcpSnippet = !showMcpSnippet"
+                      class="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5"
+                    >
+                      <span>{{ showMcpSnippet ? '收起配置' : '配置示例' }}</span>
+                    </button>
+                  </div>
                 </div>
 
                 <!-- 演示模式警示条 -->
@@ -456,67 +487,64 @@ onMounted(loadSettings)
                 </div>
 
                 <!-- 传输协议选择切换器 -->
-                <div class="flex items-center justify-between gap-2 pt-0.5">
-                  <div class="inline-flex p-0.5 rounded-lg bg-muted/60 border border-border/40 text-[10px]">
+                <div class="space-y-1.5 pt-0.5">
+                  <div class="grid grid-cols-2 sm:inline-flex p-0.5 rounded-lg bg-muted/60 border border-border/40 text-[10px] w-full sm:w-auto">
                     <button
                       type="button"
                       @click="mcpProtocol = 'streamable'"
                       :class="[
-                        'px-2 py-0.5 rounded-md font-medium transition-colors',
+                        'px-2 py-1.5 sm:py-0.5 rounded-md font-medium transition-colors text-center flex items-center justify-center',
                         mcpProtocol === 'streamable'
                           ? 'bg-background text-foreground shadow-sm'
                           : 'text-muted-foreground hover:text-foreground'
                       ]"
                     >
-                      Streamable HTTP (推荐)
+                      <span class="whitespace-nowrap">Streamable HTTP (推荐)</span>
                     </button>
                     <button
                       type="button"
                       @click="mcpProtocol = 'sse'"
                       :class="[
-                        'px-2 py-0.5 rounded-md font-medium transition-colors',
+                        'px-2 py-1.5 sm:py-0.5 rounded-md font-medium transition-colors text-center flex items-center justify-center',
                         mcpProtocol === 'sse'
                           ? 'bg-background text-foreground shadow-sm'
                           : 'text-muted-foreground hover:text-foreground'
                       ]"
                     >
-                      HTTP + SSE (兼容旧版)
+                      <span class="whitespace-nowrap">HTTP + SSE (兼容旧版)</span>
                     </button>
                   </div>
-                  <span class="text-[10px] text-muted-foreground hidden sm:inline">
-                    {{ mcpProtocol === 'streamable' ? '单端点现行标准规范' : '传统双端点长连接' }}
-                  </span>
                 </div>
 
-                <div class="space-y-1">
-                  <Label class="text-[11px] text-muted-foreground flex items-center justify-between">
-                    <span>
-                      连接 URL
+                <div class="space-y-1.5">
+                  <div class="text-[11px] text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
+                    <div class="flex items-center gap-1 min-w-0">
+                      <span>连接 URL</span>
                       <span class="font-mono text-[10px] text-purple-600 dark:text-purple-400">
                         ({{ mcpProtocol === 'streamable' ? '/open2api/v1/mcp' : '/open2api/v1/mcp/sse' }})
                       </span>
-                    </span>
-                    <span v-if="isDemoMode" class="text-destructive text-[10px]">演示模式下不可用</span>
-                    <span v-else-if="!form.openapi_token" class="text-amber-500 text-[10px]">需先生成 Token</span>
-                  </Label>
+                    </div>
+                    <span v-if="isDemoMode" class="text-destructive text-[10px] shrink-0">演示模式下不可用</span>
+                    <span v-else-if="!form.openapi_token" class="text-amber-500 text-[10px] shrink-0">需先生成并保存 Token</span>
+                  </div>
                   <div class="flex items-center gap-1.5">
                     <Input
                       :model-value="isDemoMode ? '演示模式下已禁用 MCP 协议与远程连接' : currentMcpUrl"
                       readonly
                       :disabled="isDemoMode"
-                      class="text-xs h-8 font-mono bg-muted/40 select-all flex-1 min-w-0"
+                      class="text-xs h-8.5 font-mono bg-muted/40 select-all flex-1 min-w-0"
                     />
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      class="h-8 px-2.5 shrink-0 text-xs gap-1"
+                      class="h-8.5 px-2.5 shrink-0 text-xs gap-1"
                       @click="copyMcpUrl"
                       :disabled="isDemoMode || !form.openapi_token || !form.openapi_enabled"
                       :title="isDemoMode ? '演示模式下禁止使用 MCP 能力' : '复制'"
                     >
                       <Copy class="w-3 h-3" />
-                      复制
+                      <span>复制</span>
                     </Button>
                   </div>
                 </div>
@@ -532,7 +560,7 @@ onMounted(loadSettings)
                       class="text-[10px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Copy class="w-2.5 h-2.5" />
-                      复制配置 JSON
+                      <span>复制配置 JSON</span>
                     </button>
                   </div>
                   <pre class="p-2 rounded-lg bg-muted/80 text-[10px] font-mono leading-relaxed overflow-x-auto select-all text-foreground/90 max-h-36 border border-border/50">{{ mcpConfigJson }}</pre>
@@ -549,14 +577,14 @@ onMounted(loadSettings)
       <!-- 右列：日志生命周期与自动清理 -->
       <div class="space-y-6">
         <Card class="shadow-sm">
-          <CardHeader class="pb-4">
+          <CardHeader class="pb-4 px-4 sm:px-6">
             <CardTitle class="flex items-center gap-2 text-base">
               <Database class="w-4 h-4 text-indigo-500" />
               <span>日志生命周期与自动清理</span>
             </CardTitle>
             <CardDescription>按保留天数与条数双维度监控，定期自动清理历史过期数据</CardDescription>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="space-y-4 px-4 sm:px-6">
             <!-- 4 大日志清理条目（响应式单列/双行适配，小屏下自动折行不挤压） -->
             <div class="space-y-2.5">
               <!-- 系统通知 -->
@@ -714,11 +742,11 @@ onMounted(loadSettings)
 
         <!-- 模块 3.5: 容器内存与缓存优化 -->
         <Card class="shadow-sm">
-          <CardHeader class="pb-4 space-y-2">
+          <CardHeader class="pb-4 space-y-2 px-4 sm:px-6">
             <div class="flex items-center justify-between gap-3">
               <CardTitle class="flex items-center gap-2 text-sm sm:text-base font-semibold min-w-0">
                 <Cpu class="w-4 h-4 text-emerald-500 shrink-0" />
-                <span class="truncate">容器内存与缓存优化</span>
+                <span class="whitespace-nowrap">容器内存与缓存优化</span>
                 <Badge
                   v-if="isDemoMode"
                   variant="destructive"
@@ -729,14 +757,14 @@ onMounted(loadSettings)
               </CardTitle>
               <div class="flex items-center gap-2 shrink-0">
                 <Switch v-model="form.cache_trim_enabled" id="cache-trim-enabled" :disabled="isDemoMode" />
-                <Label for="cache-trim-enabled" class="text-xs cursor-pointer">开启自适应</Label>
+                <Label for="cache-trim-enabled" class="text-xs cursor-pointer select-none">开启自适应</Label>
               </div>
             </div>
             <CardDescription class="text-xs">
               监控容器内存水位与文件缓存，在内存超标或任务执行完毕后自动安全释放
             </CardDescription>
           </CardHeader>
-          <CardContent class="space-y-4">
+          <CardContent class="space-y-4 px-4 sm:px-6">
             <!-- 演示模式警示条 -->
             <div v-if="isDemoMode" class="flex items-center gap-2 p-2.5 rounded-xl bg-destructive/10 text-destructive text-xs">
               <AlertTriangle class="h-4 w-4 shrink-0" />
@@ -792,7 +820,7 @@ onMounted(loadSettings)
               <div class="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                 <div class="flex items-center gap-1.5">
                   <Switch v-model="form.task_finished_trim" id="task-finished-trim" :disabled="isDemoMode || !form.cache_trim_enabled" />
-                  <Label for="task-finished-trim" class="text-xs cursor-pointer">自动</Label>
+                  <Label for="task-finished-trim" class="text-xs cursor-pointer select-none">自动</Label>
                 </div>
                 <Button
                   type="button"
@@ -823,8 +851,8 @@ onMounted(loadSettings)
         </Card>
 
         <!-- 模块 4: 配置保存与生效面板 -->
-        <Card class="shadow-sm flex flex-col justify-between pt-4.5 pb-5">
-          <CardHeader class="pb-3 pt-0 px-5">
+        <Card class="shadow-sm flex flex-col justify-between pt-4 pb-5">
+          <CardHeader class="pb-3 pt-0 px-4 sm:px-5">
             <div class="space-y-1">
               <CardTitle class="text-base flex items-center gap-2">
                 <Save class="w-4 h-4 text-emerald-500" />
@@ -836,7 +864,7 @@ onMounted(loadSettings)
             </div>
           </CardHeader>
 
-          <CardContent class="px-5 pb-0 pt-0">
+          <CardContent class="px-4 sm:px-5 pb-0 pt-0">
             <!-- 底部操作按钮栏 -->
             <div class="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <span class="text-[11px] text-muted-foreground flex items-center gap-1.5">

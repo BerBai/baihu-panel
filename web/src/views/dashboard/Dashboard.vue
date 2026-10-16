@@ -526,10 +526,10 @@ onUnmounted(() => {
           :class="item.topBarClass"
         />
 
-        <!-- 右下角巨幅微弱水印背景图标 (极弱质感衬底) -->
+        <!-- 右下角巨幅微弱水印背景图标 (小屏隐藏，仅在具有充裕空间的大屏展示) -->
         <component
           :is="item.icon"
-          class="absolute -right-2.5 -bottom-2.5 w-16 h-16 opacity-[0.015] dark:opacity-[0.02] group-hover:opacity-[0.03] dark:group-hover:opacity-[0.04] group-hover:scale-105 transition-all duration-500 pointer-events-none select-none"
+          class="hidden sm:block absolute -right-2.5 -bottom-2.5 w-16 h-16 opacity-[0.015] dark:opacity-[0.02] group-hover:opacity-[0.03] dark:group-hover:opacity-[0.04] group-hover:scale-105 transition-all duration-500 pointer-events-none select-none"
           :class="item.iconColor"
         />
 
@@ -573,7 +573,7 @@ onUnmounted(() => {
           </div>
           <ArrowUpRight
             v-else
-            class="w-3.5 h-3.5 text-muted-foreground/20 group-hover:text-muted-foreground/60 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0"
+            class="w-3.5 h-3.5 text-muted-foreground/15 dark:text-muted-foreground/10 group-hover:text-muted-foreground/50 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0"
           />
         </div>
       </div>

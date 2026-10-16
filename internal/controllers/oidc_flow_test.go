@@ -334,3 +334,73 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 		t.Fatal("OAuth2 登录成功后未下发认证 Cookie")
 	}
 }
+
+// 验证当管理员未配置 oidc_redirect_url 时，OidcStatus 能自动兜底推导并正常返回 enabled: true
+func TestOidcStatusWithoutRedirectUrlFallback(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("初始化测试内存数据库失败: %v", err)
+	}
+	database.DB = db
+	_ = db.AutoMigrate(&models.Setting{}, &models.User{})
+
+	settings := services.NewSettingsService()
+	for k, v := range map[string]string{
+		constant.KeyOidcEnabled:  "true",
+		constant.KeyOidcType:     "oidc",
+		constant.KeyOidcIssuer:   "https://id.example.com",
+		constant.KeyOidcClientID: "my-client",
+		// 注意：此处故意留空 KeyOidcRedirectURL
+		constant.KeyOidcRedirectURL: "",
+	} {
+		_ = settings.Set(constant.SectionSecurity, k, v)
+	}
+
+	ac := NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
+	router := gin.New()
+	router.GET("/api/v1/auth/oidc/status", ac.OidcStatus)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/status", nil)
+	req.Host = "panel.test.com"
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("期望状态码 200，实际: %d (%s)", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"enabled":true`) {
+		t.Fatalf("当 redirect_url 为空时，OidcStatus 未能自动 fallback，响应: %s", w.Body.String())
+	}
+}
+
+// 验证 OidcTest 接口测试
+func TestOidcTestEndpoint(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	settings := services.NewSettingsService()
+	ac := NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
+
+	router := gin.New()
+	router.POST("/api/v1/auth/oidc/test", ac.OidcTest)
+
+	// 1. 测试空 Issuer 参数校验
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oidc/test", strings.NewReader(`{"type":"oidc","issuer":""}`))
+	req1.Header.Set("Content-Type", "application/json")
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	if w1.Code != http.StatusBadRequest {
+		t.Fatalf("空 Issuer 应返回 400，实际: %d", w1.Code)
+	}
+
+	// 2. 测试不可达域名并返回具体错误明细
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oidc/test", strings.NewReader(`{"type":"oidc","issuer":"https://127.0.0.1:54321"}`))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	if w2.Code != http.StatusInternalServerError {
+		t.Fatalf("不可达地址应返回 500，实际: %d", w2.Code)
+	}
+	if !strings.Contains(w2.Body.String(), "连接提供方失败") {
+		t.Fatalf("期望返回清晰的连接提供方失败信息，实际: %s", w2.Body.String())
+	}
+}
+

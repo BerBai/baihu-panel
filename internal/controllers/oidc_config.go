@@ -2,6 +2,9 @@ package controllers
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -10,6 +13,7 @@ import (
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/services"
 	"github.com/engigu/baihu-panel/internal/utils"
+	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )
 
@@ -49,8 +53,29 @@ type oidcConfig struct {
 	UserKey     string
 }
 
+// resolveRedirectURL 解析回调地址：优先使用管理员配置；留空时根据当前请求动态推导标准回调地址
+func (ac *AuthController) resolveRedirectURL(custom string, c *gin.Context) string {
+	if trimmed := strings.TrimSpace(custom); trimmed != "" {
+		return trimmed
+	}
+	if c != nil && c.Request != nil {
+		scheme := "http"
+		if c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		host := c.GetHeader("X-Forwarded-Host")
+		if host == "" {
+			host = c.Request.Host
+		}
+		if host != "" {
+			return fmt.Sprintf("%s://%s/api/v1/auth/oidc/callback", scheme, host)
+		}
+	}
+	return "/api/v1/auth/oidc/callback"
+}
+
 // oidcConfig 读取并校验单点登录（OIDC / OAuth 2.0）设置；未启用或配置不全时返回 nil
-func (ac *AuthController) oidcConfig() *oidcConfig {
+func (ac *AuthController) oidcConfig(ctx ...*gin.Context) *oidcConfig {
 	if ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcEnabled) != "true" {
 		return nil
 	}
@@ -60,12 +85,17 @@ func (ac *AuthController) oidcConfig() *oidcConfig {
 		ssoType = constant.SSOTypeOIDC
 	}
 
-	clientID := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientID)
-	clientSecret := utils.DecryptSecret(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientSecret))
-	redirect := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcRedirectURL)
-	if clientID == "" || redirect == "" {
+	clientID := strings.TrimSpace(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientID))
+	if clientID == "" {
 		return nil
 	}
+	clientSecret := utils.DecryptSecret(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientSecret))
+
+	var c *gin.Context
+	if len(ctx) > 0 {
+		c = ctx[0]
+	}
+	redirect := ac.resolveRedirectURL(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcRedirectURL), c)
 
 	role := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcDefaultRole)
 	if role != constant.AdminRole {
@@ -137,6 +167,20 @@ func (ac *AuthController) oidcConfig() *oidcConfig {
 	}
 }
 
+// newSSOHTTPClient 创建统一的 SSO HTTP 客户端（支持私有自签名证书与内网代理环境）
+func newSSOHTTPClient() *http.Client {
+	tr := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, // 兼容自建与私有部署环境的自签名证书与内网 IP
+		},
+	}
+	return &http.Client{
+		Transport: tr,
+		Timeout:   15 * time.Second,
+	}
+}
+
 // oidcProviderFor 返回可用的 provider / verifier / oauth2 配置（设置变更后自动重建）
 func (ac *AuthController) oidcProviderFor(ctx context.Context, cfg *oidcConfig) (*oidc.IDTokenVerifier, *oauth2.Config, error) {
 	// 通用 OAuth 2.0 模式：直接构建标准 oauth2.Config，不需要 OIDC Provider 与 JWKS 验签器
@@ -164,7 +208,26 @@ func (ac *AuthController) oidcProviderFor(ctx context.Context, cfg *oidcConfig) 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	provider, err := oidc.NewProvider(ctx, cfg.Issuer)
+	httpClient := newSSOHTTPClient()
+	ctx = oidc.ClientContext(ctx, httpClient)
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
+
+	// 优先使用 InsecureIssuerURLContext 允许用户输入的 Issuer 与发现文档宽松匹配
+	issuerCtx := oidc.InsecureIssuerURLContext(ctx, cfg.Issuer)
+
+	provider, err := oidc.NewProvider(issuerCtx, cfg.Issuer)
+	if err != nil {
+		// 若因末尾斜杠不一致（例如发现文档定义了尾部斜杠），自动切换斜杠重试
+		altIssuer := strings.TrimRight(cfg.Issuer, "/")
+		if altIssuer == cfg.Issuer {
+			altIssuer = cfg.Issuer + "/"
+		}
+		altCtx := oidc.InsecureIssuerURLContext(ctx, altIssuer)
+		if p2, err2 := oidc.NewProvider(altCtx, altIssuer); err2 == nil {
+			provider = p2
+			err = nil
+		}
+	}
 	if err != nil {
 		return nil, nil, err
 	}

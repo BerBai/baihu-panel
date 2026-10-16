@@ -32,6 +32,7 @@ func initPublicAPIRoutes(api *gin.RouterGroup, c *Controllers) {
 		authOidc.GET("/status", c.Auth.OidcStatus)
 		authOidc.GET("/login", c.Auth.OidcLogin)
 		authOidc.GET("/callback", c.Auth.OidcCallback)
+		authOidc.POST("/test", c.Auth.OidcTest)
 	}
 
 	// 公开的站点设置（无需认证）

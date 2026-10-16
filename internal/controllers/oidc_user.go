@@ -94,7 +94,7 @@ func (ac *AuthController) fetchOAuth2Userinfo(ctx context.Context, cfg *oidcConf
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Baihu-Panel-SSO/1.0")
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := newSSOHTTPClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("请求用户信息接口失败: %w", err)

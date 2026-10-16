@@ -1,7 +1,10 @@
 package utils
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"runtime"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,5 +70,9 @@ func TooManyRequests(c *gin.Context, msg string) {
 }
 
 func ServerError(c *gin.Context, msg string) {
+	_ = c.Error(errors.New(msg))
+	if _, file, line, ok := runtime.Caller(1); ok {
+		c.Set("error_caller", fmt.Sprintf("%s:%d", file, line))
+	}
 	Error(c, 500, msg)
 }

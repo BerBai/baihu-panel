@@ -159,6 +159,8 @@ export const api = {
       request<{ user: string }>('/auth/login/otp', { method: 'POST', body: JSON.stringify(data) }),
     logout: () => request('/auth/logout', { method: 'POST' }),
     oidcStatus: () => request<{ enabled: boolean; type?: string; name?: string }>('/auth/oidc/status'),
+    oidcTest: (data: { type: string; issuer?: string; oauth2_auth_url?: string; oauth2_token_url?: string; oauth2_userinfo_url?: string }) =>
+      request<{ message: string; endpoints?: any; claims?: any }>('/auth/oidc/test', { method: 'POST', body: JSON.stringify(data) }),
     me: () => request<{ username: string; role: string }>('/auth/me'),
     register: (data: { username: string; password: string; email: string }) =>
       request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),

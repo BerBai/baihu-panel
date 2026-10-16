@@ -26,7 +26,6 @@ import {
   Sparkles,
   HelpCircle,
   Lock,
-  RotateCcw,
   Zap,
   Layers,
   ChevronDown,
@@ -35,11 +34,13 @@ import {
 
 const loading = ref(false)
 const saving = ref(false)
+const testing = ref(false)
 const demoMode = ref(false)
 const showSecret = ref(false)
 const copied = ref(false)
 const showGuide = ref(false)
 const configExpanded = ref(false)
+const savedEnabled = ref(false)
 
 const form = ref({
   enabled: false,
@@ -47,7 +48,6 @@ const form = ref({
   issuer: '',
   client_id: '',
   client_secret: '',
-  redirect_url: '',
   scopes: '',
   auto_create: false,
   default_role: 'user',
@@ -59,17 +59,12 @@ const form = ref({
   oauth2_user_key: '',
 })
 
-// 系统自动推导的标准回调地址
+// 系统自动推导的标准回调地址（供用户在第三方后台登记）
 const defaultRedirectUrl = computed(() => {
   if (typeof window === 'undefined') return ''
   const base = window.location.origin
   const prefix = (window as any).__BASE_URL__ || ''
   return `${base}${prefix}/api/v1/auth/oidc/callback`
-})
-
-// 当前生效的回调地址（用户自定义或默认）
-const activeRedirectUrl = computed(() => {
-  return form.value.redirect_url.trim() || defaultRedirectUrl.value
 })
 
 // 探测文档地址（OIDC 模式）
@@ -148,8 +143,8 @@ function addScope(scope: string) {
 }
 
 async function copyRedirectUrl() {
-  if (!activeRedirectUrl.value) return
-  const success = await copyToClipboard(activeRedirectUrl.value)
+  if (!defaultRedirectUrl.value) return
+  const success = await copyToClipboard(defaultRedirectUrl.value)
   if (success) {
     copied.value = true
     toast.success('回调地址已复制到剪贴板')
@@ -161,22 +156,18 @@ async function copyRedirectUrl() {
   }
 }
 
-function resetDefaultRedirectUrl() {
-  form.value.redirect_url = ''
-  toast.info('已重置为系统默认回调地址')
-}
-
 async function loadSection() {
   loading.value = true
   try {
     const res = await api.settings.getSection('security')
+    const isEnabled = res.oidc_enabled === 'true'
+    savedEnabled.value = isEnabled
     form.value = {
-      enabled: res.oidc_enabled === 'true',
+      enabled: isEnabled,
       type: res.oidc_type === 'oauth2' ? 'oauth2' : 'oidc',
       issuer: res.oidc_issuer || '',
       client_id: res.oidc_client_id || '',
       client_secret: res.oidc_client_secret || '',
-      redirect_url: res.oidc_redirect_url || '',
       scopes: res.oidc_scopes || '',
       auto_create: res.oidc_auto_create === 'true',
       default_role: res.oidc_default_role === 'admin' ? 'admin' : 'user',
@@ -222,7 +213,6 @@ async function save() {
       oidc_issuer: form.value.issuer.trim(),
       oidc_client_id: form.value.client_id.trim(),
       oidc_client_secret: form.value.client_secret,
-      oidc_redirect_url: form.value.redirect_url.trim(),
       oidc_scopes: form.value.scopes.trim(),
       oidc_auto_create: form.value.auto_create ? 'true' : 'false',
       oidc_default_role: form.value.default_role,
@@ -242,10 +232,47 @@ async function save() {
   }
 }
 
+async function handleTestConnection() {
+  if (demoMode.value) {
+    toast.error('演示模式下禁止测试')
+    return
+  }
+  if (form.value.type === 'oidc') {
+    if (!form.value.issuer.trim()) {
+      toast.error('请先填写 Issuer（发现文档地址）')
+      return
+    }
+  } else {
+    if (!form.value.oauth2_auth_url || !form.value.oauth2_token_url || !form.value.oauth2_userinfo_url) {
+      toast.error('请完整填写授权、令牌与用户信息端点')
+      return
+    }
+  }
+
+  testing.value = true
+  try {
+    const res = await api.auth.oidcTest({
+      type: form.value.type,
+      issuer: form.value.issuer.trim(),
+      oauth2_auth_url: form.value.oauth2_auth_url.trim(),
+      oauth2_token_url: form.value.oauth2_token_url.trim(),
+      oauth2_userinfo_url: form.value.oauth2_userinfo_url.trim(),
+    })
+    toast.success(res.message || '连接测试通过')
+  } catch (e: any) {
+    toast.error(e.message || '连接测试失败，请检查端点或网络配置')
+  } finally {
+    testing.value = false
+  }
+}
+
 function handleToggleEnabled(val: boolean) {
   form.value.enabled = val
-  if (val && !form.value.client_id) {
+  if (val) {
     configExpanded.value = true
+    if (!savedEnabled.value) {
+      toast.info('已开启开关，请点击下方「保存单点登录配置」按钮以生效')
+    }
   }
 }
 
@@ -290,11 +317,18 @@ onMounted(() => {
               演示模式禁用
             </Badge>
             <Badge
-              v-else-if="form.enabled"
+              v-else-if="savedEnabled"
               variant="secondary"
               class="text-[10px] px-1.5 py-0 font-normal bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0"
             >
               {{ form.type === 'oauth2' ? (form.oauth2_name || 'OAuth 2.0') : 'OIDC' }} 已激活
+            </Badge>
+            <Badge
+              v-else-if="form.enabled && !savedEnabled"
+              variant="secondary"
+              class="text-[10px] px-1.5 py-0 font-normal bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 shrink-0"
+            >
+              配置待保存
             </Badge>
           </div>
           <CardDescription class="text-xs leading-relaxed pt-0.5">
@@ -341,16 +375,16 @@ onMounted(() => {
         <!-- 状态指示卡片（与上方卡片保持一致的高级状态面板，集成互联风格折叠/展开入口） -->
         <div
           class="p-3 sm:p-3.5 rounded-xl border flex items-center justify-between transition-all gap-2"
-          :class="form.enabled
+          :class="savedEnabled
             ? 'border-emerald-500/20 bg-emerald-500/5'
-            : 'border-border/70 bg-muted/20'"
+            : (form.enabled ? 'border-amber-500/30 bg-amber-500/5' : 'border-border/70 bg-muted/20')"
         >
           <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div
               class="w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0"
-              :class="form.enabled
+              :class="savedEnabled
                 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
-                : 'bg-muted text-muted-foreground border border-border/60'"
+                : (form.enabled ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30' : 'bg-muted text-muted-foreground border border-border/60')"
             >
               <Zap v-if="form.type === 'oauth2'" class="w-4 h-4" />
               <Globe v-else class="w-4 h-4" />
@@ -358,24 +392,24 @@ onMounted(() => {
             <div class="min-w-0">
               <div class="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                 <span class="text-xs font-bold text-foreground truncate">
-                  {{ form.enabled
+                  {{ savedEnabled
                     ? (form.type === 'oauth2' ? (form.oauth2_name || '通用 OAuth 2.0') : '标准 OpenID Connect')
-                    : '单点登录未启用' }}
+                    : (form.enabled ? '单点登录配置待保存' : '单点登录未启用') }}
                 </span>
                 <Badge
                   variant="outline"
                   class="text-[9px] px-1 py-0 h-4 shrink-0"
-                  :class="form.enabled
+                  :class="savedEnabled
                     ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
-                    : 'border-muted-foreground/30 text-muted-foreground'"
+                    : (form.enabled ? 'border-amber-500/40 text-amber-600 dark:text-amber-400' : 'border-muted-foreground/30 text-muted-foreground')"
                 >
                   {{ form.type === 'oauth2' ? 'OAuth 2.0' : 'OIDC' }}
                 </Badge>
               </div>
               <div class="text-[10px] text-muted-foreground pt-0.5 truncate">
-                {{ form.enabled
+                {{ savedEnabled
                   ? (form.auto_create ? '首次登录将根据角色策略自动建号' : '仅允许已绑定存量账号的用户登入')
-                  : (configExpanded ? '请在下方配置第三方认证平台端点参数' : '点击右侧按钮展开配置或开启快捷单点登录') }}
+                  : (form.enabled ? '已修改启用状态，请点击下方「保存单点登录配置」以生效' : (configExpanded ? '请在下方配置第三方认证平台端点参数' : '点击右侧按钮展开配置或开启快捷单点登录')) }}
               </div>
             </div>
           </div>
@@ -383,11 +417,18 @@ onMounted(() => {
           <!-- 右侧：在线状态与展开/收起按钮 -->
           <div class="flex items-center gap-2 sm:gap-2.5 shrink-0 pl-1 sm:pl-2">
             <div
-              v-if="form.enabled"
+              v-if="savedEnabled"
               class="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium"
             >
               <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
               <span>通道在线</span>
+            </div>
+            <div
+              v-else-if="form.enabled"
+              class="hidden sm:flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium"
+            >
+              <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              <span>待保存</span>
             </div>
             <div v-else class="hidden sm:block text-[11px] text-muted-foreground">
               未配置
@@ -485,69 +526,60 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- OIDC 专有模式表单 -->
-          <div v-if="form.type === 'oidc'" class="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-0.5">
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between gap-2 flex-wrap">
-                <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
-                  <Globe class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                  <span>Issuer（发现文档地址）</span>
-                  <span class="text-destructive">*</span>
-                </Label>
-                <a
-                  v-if="discoveryUrl"
-                  :href="discoveryUrl"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5 shrink-0"
-                >
-                  <span>检验发现文档</span>
-                  <ExternalLink class="w-2.5 h-2.5" />
-                </a>
+          <!-- 全局只读回调地址说明条（白虎面板内置标准接口，无需配置，提供给用户复制登记） -->
+          <div class="p-3 rounded-xl border border-sky-500/20 bg-sky-500/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div class="space-y-0.5 min-w-0">
+              <div class="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <ShieldCheck class="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                <span>第三方服务商登记专用回调地址 (Callback URI)</span>
               </div>
-              <Input
-                v-model="form.issuer"
-                placeholder="https://id.example.com"
-                class="h-9 text-xs font-mono"
-                :disabled="demoMode || loading"
-              />
+              <p class="text-[11px] text-muted-foreground truncate">
+                白虎面板内置标准化回调路由，无需在本系统配置；请复制并在第三方后台登记为授权回调地址。
+              </p>
             </div>
+            <div class="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
+              <code class="text-[11px] font-mono px-2 py-1 rounded bg-background border border-border/80 text-foreground truncate max-w-[240px] sm:max-w-[320px]">
+                {{ defaultRedirectUrl }}
+              </code>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                class="h-7.5 px-2.5 text-xs gap-1 font-medium bg-background shadow-xs shrink-0"
+                @click="copyRedirectUrl"
+              >
+                <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
+                <Copy v-else class="w-3.5 h-3.5" />
+                <span>{{ copied ? '已复制' : '复制' }}</span>
+              </Button>
+            </div>
+          </div>
 
-            <!-- 回调地址 (Redirect URI) 带内嵌复制 -->
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between gap-2">
-                <Label class="text-xs font-medium text-foreground truncate">回调重定向地址 (Redirect URI)</Label>
-                <button
-                  v-if="form.redirect_url"
-                  type="button"
-                  @click="resetDefaultRedirectUrl"
-                  class="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 shrink-0"
-                  title="重置为默认自动推导地址"
-                >
-                  <RotateCcw class="w-2.5 h-2.5" />
-                  <span>默认</span>
-                </button>
-              </div>
-              <div class="flex items-center gap-1.5">
-                <Input
-                  v-model="form.redirect_url"
-                  :placeholder="defaultRedirectUrl"
-                  class="h-9 text-xs font-mono flex-1 min-w-0"
-                  :disabled="demoMode || loading"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  class="h-9 px-2.5 shrink-0 text-xs gap-1 font-medium"
-                  @click="copyRedirectUrl"
-                >
-                  <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
-                  <Copy v-else class="w-3.5 h-3.5" />
-                  <span>{{ copied ? '已复制' : '复制' }}</span>
-                </Button>
-              </div>
+          <!-- OIDC 专有模式表单 -->
+          <div v-if="form.type === 'oidc'" class="space-y-1.5 pt-0.5">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+                <Globe class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span>Issuer（发现文档地址）</span>
+                <span class="text-destructive">*</span>
+              </Label>
+              <a
+                v-if="discoveryUrl"
+                :href="discoveryUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-[11px] text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5 shrink-0"
+              >
+                <span>检验发现文档</span>
+                <ExternalLink class="w-2.5 h-2.5" />
+              </a>
             </div>
+            <Input
+              v-model="form.issuer"
+              placeholder="https://id.example.com"
+              class="h-9 text-xs font-mono"
+              :disabled="demoMode || loading"
+            />
           </div>
 
           <!-- 通用 OAuth 2.0 专有模式表单 -->
@@ -594,8 +626,8 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- 平台标识与回调 -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <!-- 平台标识与用户标识键双列并排 -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div class="space-y-1.5">
                 <Label class="text-xs font-medium text-foreground">
                   显示名称 <span class="text-[10px] text-muted-foreground font-normal">（登录页按钮回显）</span>
@@ -618,29 +650,6 @@ onMounted(() => {
                   class="h-9 text-xs font-mono"
                   :disabled="demoMode || loading"
                 />
-              </div>
-
-              <div class="space-y-1.5">
-                <Label class="text-xs font-medium text-foreground">回调重定向地址</Label>
-                <div class="flex items-center gap-1.5">
-                  <Input
-                    v-model="form.redirect_url"
-                    :placeholder="defaultRedirectUrl"
-                    class="h-9 text-xs font-mono flex-1 min-w-0"
-                    :disabled="demoMode || loading"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="h-9 px-2.5 shrink-0 text-xs gap-1 font-medium"
-                    @click="copyRedirectUrl"
-                  >
-                    <Check v-if="copied" class="w-3.5 h-3.5 text-emerald-500" />
-                    <Copy v-else class="w-3.5 h-3.5" />
-                    <span>{{ copied ? '已复制' : '复制' }}</span>
-                  </Button>
-                </div>
               </div>
             </div>
           </div>
@@ -760,15 +769,28 @@ onMounted(() => {
             <span class="text-[11px] text-muted-foreground">
               单点登录配置保存后立即在登录页面生效
             </span>
-            <Button
-              @click="save"
-              :disabled="saving || loading || demoMode"
-              class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5 w-full sm:w-auto"
-            >
-              <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
-              <Save v-else class="h-3.5 w-3.5" />
-              <span>保存单点登录配置</span>
-            </Button>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+              <Button
+                type="button"
+                variant="outline"
+                @click="handleTestConnection"
+                :disabled="testing || saving || loading || demoMode"
+                class="h-8.5 px-3 text-xs font-medium shadow-xs gap-1.5 flex-1 sm:flex-none"
+              >
+                <Loader2 v-if="testing" class="h-3.5 w-3.5 animate-spin" />
+                <Zap v-else class="h-3.5 w-3.5 text-sky-500" />
+                <span>{{ testing ? '测试中...' : '测试连接' }}</span>
+              </Button>
+              <Button
+                @click="save"
+                :disabled="saving || testing || loading || demoMode"
+                class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5 flex-1 sm:flex-none"
+              >
+                <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
+                <Save v-else class="h-3.5 w-3.5" />
+                <span>保存单点登录配置</span>
+              </Button>
+            </div>
           </div>
         </div>
       </div>

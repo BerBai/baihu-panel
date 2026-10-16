@@ -2,12 +2,15 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/engigu/baihu-panel/internal/constant"
 	"github.com/engigu/baihu-panel/internal/eventbus"
+	"github.com/engigu/baihu-panel/internal/logger"
 	"github.com/engigu/baihu-panel/internal/middleware"
 	"github.com/engigu/baihu-panel/internal/utils"
 	"golang.org/x/oauth2"
@@ -21,7 +24,7 @@ func (ac *AuthController) OidcStatus(c *gin.Context) {
 		utils.Success(c, gin.H{"enabled": false})
 		return
 	}
-	cfg := ac.oidcConfig()
+	cfg := ac.oidcConfig(c)
 	if cfg == nil {
 		utils.Success(c, gin.H{"enabled": false})
 		return
@@ -43,6 +46,90 @@ func (ac *AuthController) OidcStatus(c *gin.Context) {
 	})
 }
 
+// OidcTestRequest 连通性测试请求参数
+type OidcTestRequest struct {
+	Type        string `json:"type"`
+	Issuer      string `json:"issuer"`
+	AuthURL     string `json:"oauth2_auth_url"`
+	TokenURL    string `json:"oauth2_token_url"`
+	UserinfoURL string `json:"oauth2_userinfo_url"`
+}
+
+// OidcTest 供设置界面测试单点登录提供方网络连通性与发现文档
+func (ac *AuthController) OidcTest(c *gin.Context) {
+	var req OidcTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		utils.BadRequest(c, "请求参数格式错误")
+		return
+	}
+
+	httpClient := newSSOHTTPClient()
+
+	if req.Type == constant.SSOTypeOAuth2 {
+		endpoints := map[string]string{
+			"授权端点": req.AuthURL,
+			"令牌端点": req.TokenURL,
+			"用户信息": req.UserinfoURL,
+		}
+		for name, url := range endpoints {
+			u := strings.TrimSpace(url)
+			if u == "" {
+				utils.BadRequest(c, fmt.Sprintf("%s 不能为空", name))
+				return
+			}
+			resp, err := httpClient.Get(u)
+			if err != nil {
+				utils.ServerError(c, fmt.Sprintf("%s 无法连接: %v", name, err))
+				return
+			}
+			resp.Body.Close()
+		}
+		utils.Success(c, gin.H{
+			"message": "OAuth 2.0 端点网络连通性测试通过",
+		})
+		return
+	}
+
+	// OIDC 模式
+	issuer := strings.TrimSpace(req.Issuer)
+	if issuer == "" {
+		utils.BadRequest(c, "Issuer（发现文档地址）不能为空")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	ctx = oidc.ClientContext(ctx, httpClient)
+	ctx = oidc.InsecureIssuerURLContext(ctx, issuer)
+
+	provider, err := oidc.NewProvider(ctx, issuer)
+	if err != nil {
+		altIssuer := strings.TrimRight(issuer, "/")
+		if altIssuer == issuer {
+			altIssuer = issuer + "/"
+		}
+		altCtx := oidc.InsecureIssuerURLContext(ctx, altIssuer)
+		if p2, err2 := oidc.NewProvider(altCtx, altIssuer); err2 == nil {
+			provider = p2
+			err = nil
+		}
+	}
+	if err != nil {
+		utils.ServerError(c, "连接提供方失败: "+err.Error())
+		return
+	}
+
+	claims := map[string]interface{}{}
+	_ = provider.Claims(&claims)
+
+	utils.Success(c, gin.H{
+		"message":   "发现文档解析成功，OIDC 通道连通正常",
+		"endpoints": provider.Endpoint(),
+		"claims":    claims,
+	})
+}
+
 // OidcLogin 重定向到 SSO 授权端点（授权码 + PKCE）
 func (ac *AuthController) OidcLogin(c *gin.Context) {
 	if constant.DemoMode {
@@ -50,7 +137,7 @@ func (ac *AuthController) OidcLogin(c *gin.Context) {
 		return
 	}
 
-	cfg := ac.oidcConfig()
+	cfg := ac.oidcConfig(c)
 	if cfg == nil {
 		utils.BadRequest(c, "单点登录未启用或配置不完整")
 		return
@@ -58,7 +145,8 @@ func (ac *AuthController) OidcLogin(c *gin.Context) {
 
 	_, oauthCfg, err := ac.oidcProviderFor(c.Request.Context(), cfg)
 	if err != nil {
-		utils.ServerError(c, "无法连接单点登录提供方，请检查配置")
+		logger.Errorf("[OIDC] 无法连接单点登录提供方 (Issuer: %s): %v", cfg.Issuer, err)
+		utils.ServerError(c, "无法连接单点登录提供方: "+err.Error())
 		return
 	}
 
@@ -89,7 +177,7 @@ func (ac *AuthController) OidcCallback(c *gin.Context) {
 		return
 	}
 
-	cfg := ac.oidcConfig()
+	cfg := ac.oidcConfig(c)
 	if cfg == nil {
 		utils.BadRequest(c, "单点登录未启用")
 		return
@@ -127,7 +215,8 @@ func (ac *AuthController) OidcCallback(c *gin.Context) {
 
 	verifierObj, oauthCfg, err := ac.oidcProviderFor(ctx, cfg)
 	if err != nil {
-		utils.ServerError(c, "无法连接单点登录提供方")
+		logger.Errorf("[OIDC] 回调阶段无法连接单点登录提供方: %v", err)
+		utils.ServerError(c, "无法连接单点登录提供方: "+err.Error())
 		return
 	}
 

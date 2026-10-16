@@ -656,8 +656,9 @@ onMounted(() => {
               :disabled="demoMode || loading"
               @blur="cleanOidcIssuer"
             />
-            <p class="text-[11px] text-muted-foreground pt-0.5">
-              💡 填写身份认证根域名（例如 <code>https://id.example.com</code>），无需手动拼接 <code>/.well-known/...</code> 后缀。
+            <p class="text-[11px] text-muted-foreground pt-0.5 flex items-center gap-1.5">
+              <HelpCircle class="w-3.5 h-3.5 text-muted-foreground/80 shrink-0" />
+              <span>填写身份认证根域名（例如 <code>https://id.example.com</code>），无需手动拼接 <code>/.well-known/...</code> 后缀。</span>
             </p>
           </div>
 

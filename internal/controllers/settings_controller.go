@@ -679,8 +679,10 @@ func (sc *SettingsController) UpdateSectionSettings(c *gin.Context) {
 		return
 	}
 
-	// security 段：OIDC 客户端密钥按掩码/明文/清空分别处理
-	values = prepareOidcSection(section, values, sc.settingsService.Get(section, constant.KeyOidcClientSecret))
+	// security 段：客户端密钥按掩码/明文/清空分别处理
+	values = prepareOidcSection(section, values, func(key string) string {
+		return sc.settingsService.Get(section, key)
+	})
 
 	if err := sc.settingsService.SetSection(section, values); err != nil {
 		utils.ServerError(c, "更新失败")

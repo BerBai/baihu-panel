@@ -31,23 +31,31 @@ func (ac *AuthController) logOidcFailure(c *gin.Context, username, message strin
 	})
 }
 
-// resolveOidcUser 按 subject 精确匹配 → 邮箱绑定 → 按配置自动创建
+// resolveOidcUser 按 subject 精确匹配（支持多源隔离） → 邮箱绑定 → 按配置自动创建
 func (ac *AuthController) resolveOidcUser(cfg *oidcConfig, claims *oidcClaims) (*models.User, bool) {
 	if claims.Sub == "" {
 		return nil, false
 	}
 
+	// 生成通道命名空间标识，防止不同身份源（如 GitHub 数字 ID 与自建 OIDC ID）碰撞
+	qualifiedSub := fmt.Sprintf("%s:%s", cfg.Type, claims.Sub)
+
 	var user models.User
-	res := database.DB.Where("oidc_subject = ?", claims.Sub).Limit(1).Find(&user)
+	// 1. 优先匹配带命名空间的 subject，同时兼容匹配历史无前缀的存量 subject
+	res := database.DB.Where("oidc_subject = ? OR oidc_subject = ?", qualifiedSub, claims.Sub).Limit(1).Find(&user)
 	if res.Error == nil && res.RowsAffected > 0 {
+		// 平滑升级：若数据库中为无前缀存量记录，自动补齐命名空间
+		if user.OidcSubject == claims.Sub && qualifiedSub != claims.Sub {
+			database.DB.Model(&user).Update("oidc_subject", qualifiedSub)
+		}
 		return &user, false
 	}
 
-	// 兼容已存在账号：邮箱相同且尚未绑定过任何 subject，则自动绑定
+	// 2. 兼容已存在账号：邮箱相同且尚未绑定过任何第三方 subject，则自动关联
 	if claims.Email != "" {
 		res := database.DB.Where("email = ? AND (oidc_subject = '' OR oidc_subject IS NULL)", claims.Email).Limit(1).Find(&user)
 		if res.Error == nil && res.RowsAffected > 0 {
-			database.DB.Model(&user).Update("oidc_subject", claims.Sub)
+			database.DB.Model(&user).Update("oidc_subject", qualifiedSub)
 			return &user, false
 		}
 	}
@@ -64,7 +72,7 @@ func (ac *AuthController) resolveOidcUser(cfg *oidcConfig, claims *oidcClaims) (
 		username = "sso_" + claims.Sub
 	}
 
-	created := ac.userService.CreateOidcUser(ac.uniqueUsername(username), claims.Email, cfg.DefaultRole, claims.Sub)
+	created := ac.userService.CreateOidcUser(ac.uniqueUsername(username), claims.Email, cfg.DefaultRole, qualifiedSub)
 	if created == nil {
 		return nil, false
 	}

@@ -34,6 +34,14 @@ func initPublicAPIRoutes(api *gin.RouterGroup, c *Controllers) {
 		authOidc.POST("/test", c.Auth.OidcTest)
 	}
 
+	// 通用 OAuth 2.0 单点登录（浏览器重定向流程，支持多身份源并行）
+	authOAuth2 := api.Group("/auth/oauth2")
+	{
+		authOAuth2.GET("/login", c.Auth.OAuth2Login)
+		authOAuth2.GET("/callback", c.Auth.OAuth2Callback)
+		authOAuth2.POST("/test", c.Auth.OAuth2Test)
+	}
+
 	// 公开的站点元数据与 SSO 状态（无需认证，Public 控制器统一托管）
 	api.GET("/public/settings", c.Public.GetPublicSettings)
 

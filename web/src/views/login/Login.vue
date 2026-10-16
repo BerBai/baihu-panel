@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import ThemeToggle from '@/components/ThemeToggle.vue'
-import { Loader2, Fingerprint } from 'lucide-vue-next'
+import { Loader2, Fingerprint, Zap } from 'lucide-vue-next'
 import { api } from '@/api'
 import { toast } from 'vue-sonner'
 import { setAuthCache } from '@/router'
-
 
 const username = ref('')
 const password = ref('')
@@ -23,9 +22,15 @@ const demoMode = ref(false)
 const requireOtp = ref(false)
 const otpPendingToken = ref('')
 const otpCode = ref('')
-const oidcEnabled = ref(false)
-const ssoName = ref('OIDC')
-const ssoType = ref('oidc')
+
+interface SSOProvider {
+  id: string
+  type: string
+  name: string
+  login_url: string
+}
+const ssoProviders = ref<SSOProvider[]>([])
+const hasSSO = computed(() => ssoProviders.value.length > 0)
 
 // 从 localStorage 加载缓存的站点设置
 function loadCachedSettings() {
@@ -88,13 +93,20 @@ async function loadSiteSettings() {
       password.value = '123456'
     }
 
-    // 同步设置单点登录 (SSO) 状态，首屏一次性就绪
-    if (res.sso) {
-      oidcEnabled.value = !!res.sso.enabled
-      ssoType.value = res.sso.type || 'oidc'
-      ssoName.value = res.sso.name || (ssoType.value === 'oauth2' ? 'OAuth 2.0' : 'OIDC')
+    // 设置单点登录 (SSO) 列表，支持多身份源并行
+    if (res.sso && res.sso.enabled) {
+      if (res.sso.providers && res.sso.providers.length > 0) {
+        ssoProviders.value = res.sso.providers
+      } else {
+        ssoProviders.value = [{
+          id: res.sso.type || 'oidc',
+          type: res.sso.type || 'oidc',
+          name: res.sso.name || (res.sso.type === 'oauth2' ? 'OAuth 2.0' : 'OIDC'),
+          login_url: res.sso.type === 'oauth2' ? '/api/v1/auth/oauth2/login' : '/api/v1/auth/oidc/login'
+        }]
+      }
     } else {
-      oidcEnabled.value = false
+      ssoProviders.value = []
     }
 
     // 设置 favicon
@@ -159,10 +171,12 @@ onMounted(() => {
   loadSiteSettings()
 })
 
-function handleOidcLogin() {
+function handleSSOLogin(provider: SSOProvider) {
   const baseUrl = (window as any).__BASE_URL__ || ''
   const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.href = `${baseUrl}/api/v1/auth/oidc/login?redirect=${redirect}`
+  const targetUrl = provider.login_url || '/api/v1/auth/oidc/login'
+  const sep = targetUrl.includes('?') ? '&' : '?'
+  window.location.href = `${baseUrl}${targetUrl}${sep}redirect=${redirect}`
 }
 </script>
 
@@ -245,22 +259,31 @@ function handleOidcLogin() {
             </div>
           </form>
 
-          <!-- 单点登录 (OIDC / OAuth 2.0) -->
-          <div v-if="oidcEnabled && !requireOtp" class="mt-6">
+          <!-- 单点登录 / 第三方免密快捷登录 (支持多身份源并行) -->
+          <div v-if="hasSSO && !requireOtp" class="mt-6">
             <div class="relative">
               <div class="absolute inset-0 flex items-center">
                 <span class="w-full border-t border-border/60" />
               </div>
               <div class="relative flex justify-center text-xs uppercase">
-                <span class="bg-background px-2 text-muted-foreground/70">或</span>
+                <span class="bg-background px-2 text-muted-foreground/70">或使用第三方快捷登录</span>
               </div>
             </div>
-            <Button type="button" variant="outline"
-              class="mt-4 w-full h-12 text-base font-semibold rounded-2xl flex items-center justify-center gap-2 hover:bg-sky-500/5 hover:border-sky-500/40 transition-all shadow-sm"
-              @click="handleOidcLogin" :disabled="loading">
-              <Fingerprint class="w-5 h-5 text-sky-500 shrink-0" />
-              <span>使用 {{ ssoName }} 单点登录</span>
-            </Button>
+            <div class="mt-4 space-y-2.5">
+              <Button
+                v-for="p in ssoProviders"
+                :key="p.id"
+                type="button"
+                variant="outline"
+                class="w-full h-11 text-sm font-semibold rounded-2xl flex items-center justify-center gap-2.5 hover:bg-sky-500/5 hover:border-sky-500/40 transition-all shadow-sm"
+                @click="handleSSOLogin(p)"
+                :disabled="loading"
+              >
+                <Zap v-if="p.type === 'oauth2'" class="w-4 h-4 text-amber-500 shrink-0" />
+                <Fingerprint v-else class="w-4.5 h-4.5 text-sky-500 shrink-0" />
+                <span>使用 {{ p.name }} 登录</span>
+              </Button>
+            </div>
           </div>
 
           <p v-if="demoMode" class="mt-8 text-center text-xs text-muted-foreground/60">

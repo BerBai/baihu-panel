@@ -502,7 +502,7 @@ onUnmounted(() => {
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
         <h2 class="text-2xl font-bold tracking-tight">数据仪表</h2>
-        <p class="text-xs sm:text-sm text-muted-foreground mt-0.5">实时系统运行状态、任务调度活跃度与指标汇总</p>
+        <p class="text-xs sm:text-sm text-muted-foreground mt-0.5 truncate">系统运行状态与任务调度指标</p>
       </div>
       <div class="shrink-0 pt-0.5 sm:pt-1">
         <Badge variant="outline" class="h-6 px-2 sm:px-2.5 text-[11px] font-normal border-border/80 text-muted-foreground gap-1.5 whitespace-nowrap">

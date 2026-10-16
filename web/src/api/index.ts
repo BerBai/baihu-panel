@@ -153,7 +153,23 @@ export async function checkAuth(): Promise<boolean> {
 
 export const api = {
   public: {
-    getSettings: () => request<{ title: string; subtitle: string; icon: string; demo_mode: boolean; sso?: { enabled: boolean; type?: string; name?: string } }>('/public/settings'),
+    getSettings: () => request<{
+      title: string
+      subtitle: string
+      icon: string
+      demo_mode: boolean
+      sso?: {
+        enabled: boolean
+        type?: string
+        name?: string
+        providers?: Array<{
+          id: string
+          type: string
+          name: string
+          login_url: string
+        }>
+      }
+    }>('/public/settings'),
   },
   auth: {
     login: (data: { username: string; password: string }) =>
@@ -163,6 +179,8 @@ export const api = {
     logout: () => request('/auth/logout', { method: 'POST' }),
     oidcTest: (data: { type: string; issuer?: string; oauth2_auth_url?: string; oauth2_token_url?: string; oauth2_userinfo_url?: string }) =>
       request<{ message: string; endpoints?: any; claims?: any }>('/auth/oidc/test', { method: 'POST', body: JSON.stringify(data) }),
+    oauth2Test: (data: { type?: string; oauth2_auth_url?: string; oauth2_token_url?: string; oauth2_userinfo_url?: string }) =>
+      request<{ message: string }>('/auth/oauth2/test', { method: 'POST', body: JSON.stringify({ ...data, type: 'oauth2' }) }),
     me: () => request<{ username: string; role: string }>('/auth/me'),
     register: (data: { username: string; password: string; email: string }) =>
       request('/auth/register', { method: 'POST', body: JSON.stringify(data) }),

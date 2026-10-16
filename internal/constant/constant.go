@@ -54,11 +54,17 @@ const (
 	KeyOidcDefaultRole  = "oidc_default_role"
 
 	// 通用 OAuth 2.0 专用配置
-	KeyOauth2AuthURL     = "oauth2_auth_url"     // 授权端点 Authorize URL
-	KeyOauth2TokenURL    = "oauth2_token_url"    // 令牌端点 Token URL
-	KeyOauth2UserinfoURL = "oauth2_userinfo_url" // 用户信息端点 Userinfo URL
-	KeyOauth2Name        = "oauth2_name"         // 平台显示名称（例如 "GitHub"、"Gitee"）
-	KeyOauth2UserKey     = "oauth2_user_key"     // 用户唯一标识键（缺省自动嗅探 sub / id / login）
+	KeyOauth2Enabled      = "oauth2_enabled"       // OAuth 2.0 独立启用开关
+	KeyOauth2AuthURL      = "oauth2_auth_url"      // 授权端点 Authorize URL
+	KeyOauth2TokenURL     = "oauth2_token_url"     // 令牌端点 Token URL
+	KeyOauth2UserinfoURL  = "oauth2_userinfo_url"  // 用户信息端点 Userinfo URL
+	KeyOauth2Name         = "oauth2_name"          // 平台显示名称（例如 "GitHub"、"Gitee"）
+	KeyOauth2UserKey      = "oauth2_user_key"      // 用户唯一标识键（缺省自动嗅探 sub / id / login）
+	KeyOauth2ClientID     = "oauth2_client_id"     // OAuth 2.0 独立客户端标识
+	KeyOauth2ClientSecret = "oauth2_client_secret" // OAuth 2.0 独立客户端密钥
+	KeyOauth2Scopes       = "oauth2_scopes"        // OAuth 2.0 独立授权范围
+	KeyOauth2AutoCreate   = "oauth2_auto_create"   // OAuth 2.0 独立首次登录建号开关
+	KeyOauth2DefaultRole  = "oauth2_default_role"  // OAuth 2.0 独立首次登录默认角色
 
 	// System Settings Key 常量
 	KeyInitialized = "initialized"

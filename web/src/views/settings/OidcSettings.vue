@@ -67,12 +67,22 @@ const defaultRedirectUrl = computed(() => {
   return `${base}${prefix}/api/v1/auth/oidc/callback`
 })
 
+function cleanIssuer() {
+  if (form.value.issuer) {
+    form.value.issuer = form.value.issuer
+      .trim()
+      .replace(/\/+\.well-known\/openid-configuration\/?$/i, '')
+      .replace(/\/+$/, '')
+  }
+}
+
 // 探测文档地址（OIDC 模式）
 const discoveryUrl = computed(() => {
   if (form.value.type !== 'oidc') return ''
-  const iss = form.value.issuer.trim()
+  let iss = form.value.issuer.trim()
   if (!iss || (!iss.startsWith('http://') && !iss.startsWith('https://'))) return ''
-  return iss.replace(/\/+$/, '') + '/.well-known/openid-configuration'
+  iss = iss.replace(/\/+\.well-known\/openid-configuration\/?$/i, '').replace(/\/+$/, '')
+  return `${iss}/.well-known/openid-configuration`
 })
 
 // 常用 OAuth 2.0 平台预设模版
@@ -190,6 +200,8 @@ async function save() {
     return
   }
 
+  cleanIssuer()
+
   if (form.value.enabled) {
     if (!form.value.client_id) {
       toast.error('请填写 Client ID（客户端标识）')
@@ -237,6 +249,7 @@ async function handleTestConnection() {
     toast.error('演示模式下禁止测试')
     return
   }
+  cleanIssuer()
   if (form.value.type === 'oidc') {
     if (!form.value.issuer.trim()) {
       toast.error('请先填写 Issuer（发现文档地址）')
@@ -560,7 +573,7 @@ onMounted(() => {
             <div class="flex items-center justify-between gap-2 flex-wrap">
               <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
                 <Globe class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                <span>Issuer（发现文档地址）</span>
+                <span>Issuer（提供方根地址）</span>
                 <span class="text-destructive">*</span>
               </Label>
               <a
@@ -579,7 +592,11 @@ onMounted(() => {
               placeholder="https://id.example.com"
               class="h-9 text-xs font-mono"
               :disabled="demoMode || loading"
+              @blur="cleanIssuer"
             />
+            <p class="text-[11px] text-muted-foreground pt-0.5">
+              💡 仅需填写身份认证根域名（例如 <code>https://id.example.com</code>），无需拼接 <code>/.well-known/...</code> 或 <code>/api</code> 后缀。
+            </p>
           </div>
 
           <!-- 通用 OAuth 2.0 专有模式表单 -->

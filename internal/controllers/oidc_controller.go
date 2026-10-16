@@ -91,7 +91,7 @@ func (ac *AuthController) OidcTest(c *gin.Context) {
 	}
 
 	// OIDC 模式
-	issuer := strings.TrimSpace(req.Issuer)
+	issuer := NormalizeIssuer(req.Issuer)
 	if issuer == "" {
 		utils.BadRequest(c, "Issuer（发现文档地址）不能为空")
 		return
@@ -116,7 +116,12 @@ func (ac *AuthController) OidcTest(c *gin.Context) {
 		}
 	}
 	if err != nil {
-		utils.ServerError(c, "连接提供方失败: "+err.Error())
+		errDetail := err.Error()
+		if strings.Contains(errDetail, "404") && strings.Contains(errDetail, "API endpoint not found") {
+			utils.ServerError(c, fmt.Sprintf("连接提供方失败 (404 Not Found)。当前身份系统（如 Pocket ID）端点未响应发现文档。请检查：1. Issuer 只需填写根域名（如 https://id.example.com，不可包含 /.well-known 等后缀）；2. 确保反向代理已将 /.well-known 转发至认证容器；或建议直接切换为【通用 OAuth 2.0】模式手动配置端点。原始错误: %s", errDetail))
+			return
+		}
+		utils.ServerError(c, "连接提供方失败: "+errDetail)
 		return
 	}
 

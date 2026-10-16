@@ -74,6 +74,22 @@ func (ac *AuthController) resolveRedirectURL(custom string, c *gin.Context) stri
 	return "/api/v1/auth/oidc/callback"
 }
 
+// NormalizeIssuer 规范化 Issuer 地址，自动剔除用户误填的 /.well-known/openid-configuration 后缀与多余斜杠
+func NormalizeIssuer(raw string) string {
+	u := strings.TrimSpace(raw)
+	u = strings.TrimRight(u, "/")
+	for {
+		trimmed := strings.TrimSuffix(u, "/.well-known/openid-configuration")
+		trimmed = strings.TrimSuffix(trimmed, "/.well-known/openid-configuration/")
+		trimmed = strings.TrimRight(trimmed, "/")
+		if trimmed == u {
+			break
+		}
+		u = trimmed
+	}
+	return u
+}
+
 // oidcConfig 读取并校验单点登录（OIDC / OAuth 2.0）设置；未启用或配置不全时返回 nil
 func (ac *AuthController) oidcConfig(ctx ...*gin.Context) *oidcConfig {
 	if ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcEnabled) != "true" {
@@ -104,7 +120,7 @@ func (ac *AuthController) oidcConfig(ctx ...*gin.Context) *oidcConfig {
 	autoCreate := ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcAutoCreate) == "true"
 
 	if ssoType == constant.SSOTypeOIDC {
-		issuer := strings.TrimRight(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcIssuer), "/")
+		issuer := NormalizeIssuer(ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcIssuer))
 		if issuer == "" {
 			return nil
 		}

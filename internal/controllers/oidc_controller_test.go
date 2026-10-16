@@ -117,3 +117,26 @@ func setupOidcTest(t *testing.T, idp *fakeIdP, autoCreate bool) *AuthController 
 
 	return NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
 }
+
+func TestNormalizeIssuer(t *testing.T) {
+	cases := []struct {
+		input    string
+		expected string
+	}{
+		{"https://id.example.com", "https://id.example.com"},
+		{"https://id.example.com/", "https://id.example.com"},
+		{"https://id.example.com///", "https://id.example.com"},
+		{"https://id.example.com/.well-known/openid-configuration", "https://id.example.com"},
+		{"https://id.example.com/.well-known/openid-configuration/", "https://id.example.com"},
+		{"  https://id.example.com/.well-known/openid-configuration/  ", "https://id.example.com"},
+		{"", ""},
+		{"   ", ""},
+	}
+
+	for _, c := range cases {
+		got := NormalizeIssuer(c.input)
+		if got != c.expected {
+			t.Errorf("NormalizeIssuer(%q) = %q, expected %q", c.input, got, c.expected)
+		}
+	}
+}

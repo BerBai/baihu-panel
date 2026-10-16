@@ -407,7 +407,7 @@ onMounted(() => {
               variant="secondary"
               class="text-[10px] px-1.5 py-0 font-normal bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0"
             >
-              标准 OIDC 已激活
+              OIDC 已激活
             </Badge>
             <Badge
               v-else-if="savedOAuth2Enabled"
@@ -437,19 +437,21 @@ onMounted(() => {
         </div>
 
         <!-- 对接指引与折叠展开按钮 -->
-        <div class="flex items-center gap-3 shrink-0 pt-1 sm:pt-0">
-          <button
+        <div class="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center sm:gap-2.5 shrink-0 pt-1.5 sm:pt-0">
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             @click="showGuide = !showGuide"
-            class="flex items-center gap-1 text-xs text-sky-600 dark:text-sky-400 hover:underline transition-colors"
+            class="text-xs h-8 sm:h-7.5 px-3 sm:px-2.5 gap-1.5 shadow-xs bg-background hover:bg-muted/70 transition-all justify-center w-full sm:w-auto text-sky-600 dark:text-sky-400 border-sky-500/25 hover:border-sky-500/40"
           >
-            <HelpCircle class="w-3.5 h-3.5" />
-            <span>{{ showGuide ? '收起指引' : '对接指引' }}</span>
-          </button>
+            <HelpCircle class="w-3.5 h-3.5 shrink-0" />
+            <span class="whitespace-nowrap">{{ showGuide ? '收起指引' : '对接指引' }}</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"
-            class="text-xs h-7.5 px-2.5 gap-1 shadow-xs bg-background hover:bg-muted/70 transition-all shrink-0"
+            class="text-xs h-8 sm:h-7.5 px-3 sm:px-2.5 gap-1.5 shadow-xs bg-background hover:bg-muted/70 transition-all justify-center w-full sm:w-auto shrink-0"
             @click="configExpanded = !configExpanded"
           >
             <span class="whitespace-nowrap">{{ configExpanded ? '收起配置' : '展开配置' }}</span>
@@ -499,12 +501,12 @@ onMounted(() => {
           <button
             type="button"
             @click="activeTab = 'oidc'"
-            class="py-2 px-3 rounded-lg transition-all flex items-center justify-between gap-2 text-xs select-none"
+            class="py-2 px-2 sm:px-3 rounded-lg transition-all flex items-center justify-between gap-1.5 sm:gap-2 text-xs select-none"
             :class="activeTab === 'oidc' ? 'bg-background text-foreground font-semibold shadow-xs border border-border/60' : 'text-muted-foreground hover:text-foreground hover:bg-background/40'"
           >
-            <div class="flex items-center gap-2 truncate">
-              <Globe class="w-4 h-4 text-sky-500 shrink-0" />
-              <span class="truncate">标准 OIDC</span>
+            <div class="flex items-center gap-1.5 sm:gap-2 truncate">
+              <Globe class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-500 shrink-0" />
+              <span class="truncate font-medium">OIDC</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span
@@ -529,12 +531,12 @@ onMounted(() => {
           <button
             type="button"
             @click="activeTab = 'oauth2'"
-            class="py-2 px-3 rounded-lg transition-all flex items-center justify-between gap-2 text-xs select-none"
+            class="py-2 px-2 sm:px-3 rounded-lg transition-all flex items-center justify-between gap-1.5 sm:gap-2 text-xs select-none"
             :class="activeTab === 'oauth2' ? 'bg-background text-foreground font-semibold shadow-xs border border-border/60' : 'text-muted-foreground hover:text-foreground hover:bg-background/40'"
           >
-            <div class="flex items-center gap-2 truncate">
-              <Zap class="w-4 h-4 text-amber-500 shrink-0" />
-              <span class="truncate">通用 OAuth 2.0 ({{ form.oauth2_name || '社交登录' }})</span>
+            <div class="flex items-center gap-1.5 sm:gap-2 truncate">
+              <Zap class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 shrink-0" />
+              <span class="truncate font-medium">OAuth 2.0</span>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span
@@ -571,24 +573,24 @@ onMounted(() => {
                 <Globe class="w-4 h-4" />
               </div>
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-xs font-bold text-foreground">标准 OpenID Connect (OIDC) 通道</span>
+                <div class="flex items-center gap-1.5 flex-nowrap">
+                  <span class="text-xs font-bold text-foreground shrink-0">OIDC 通道</span>
                   <Badge
                     variant="outline"
-                    class="text-[9px] px-1 py-0 h-4"
+                    class="text-[9px] px-1 py-0 h-4 shrink-0"
                     :class="savedOidcEnabled ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'border-muted-foreground/30 text-muted-foreground'"
                   >
-                    {{ savedOidcEnabled ? '服务在线' : (form.oidc_enabled ? '待保存启用' : '已停用') }}
+                    {{ savedOidcEnabled ? '服务在线' : (form.oidc_enabled ? '待保存' : '已停用') }}
                   </Badge>
                 </div>
                 <div class="text-[10px] text-muted-foreground pt-0.5 truncate">
-                  支持 Pocket ID、Keycloak、Authentik、Casdoor 等标准身份中心
+                  支持 Pocket ID / Keycloak / Authentik 等标准身份源
                 </div>
               </div>
             </div>
 
             <!-- 通道独立启用开关 -->
-            <div class="flex items-center gap-2 pl-2 border-l border-border/60 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
               <Switch
                 :model-value="form.oidc_enabled"
                 @update:model-value="(val) => (form.oidc_enabled = val)"
@@ -613,7 +615,7 @@ onMounted(() => {
               </p>
             </div>
             <div class="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-              <code class="text-[11px] font-mono px-2 py-1 rounded bg-background border border-border/80 text-foreground truncate max-w-[240px] sm:max-w-[320px]">
+              <code class="text-[11px] font-mono px-2 py-1 rounded bg-background border border-border/80 text-foreground truncate flex-1 min-w-0 sm:max-w-[320px]">
                 {{ oidcRedirectUrl }}
               </code>
               <Button
@@ -779,7 +781,7 @@ onMounted(() => {
               size="sm"
               @click="handleTestOidc"
               :disabled="testingOidc || saving || loading || demoMode"
-              class="h-8 px-3 text-xs font-medium shadow-xs gap-1.5"
+              class="h-8.5 px-3.5 text-xs font-medium shadow-xs gap-1.5 w-full sm:w-auto justify-center"
             >
               <Loader2 v-if="testingOidc" class="h-3.5 w-3.5 animate-spin" />
               <Globe v-else class="h-3.5 w-3.5 text-sky-500" />
@@ -803,24 +805,24 @@ onMounted(() => {
                 <Zap class="w-4 h-4" />
               </div>
               <div class="min-w-0">
-                <div class="flex items-center gap-1.5 flex-wrap">
-                  <span class="text-xs font-bold text-foreground">通用 OAuth 2.0 ({{ form.oauth2_name || '社交登录' }}) 通道</span>
+                <div class="flex items-center gap-1.5 flex-nowrap">
+                  <span class="text-xs font-bold text-foreground shrink-0">OAuth 2.0 通道</span>
                   <Badge
                     variant="outline"
-                    class="text-[9px] px-1 py-0 h-4"
+                    class="text-[9px] px-1 py-0 h-4 shrink-0"
                     :class="savedOAuth2Enabled ? 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400' : 'border-muted-foreground/30 text-muted-foreground'"
                   >
-                    {{ savedOAuth2Enabled ? '服务在线' : (form.oauth2_enabled ? '待保存启用' : '已停用') }}
+                    {{ savedOAuth2Enabled ? '服务在线' : (form.oauth2_enabled ? '待保存' : '已停用') }}
                   </Badge>
                 </div>
                 <div class="text-[10px] text-muted-foreground pt-0.5 truncate">
-                  支持 GitHub、Gitee、GitLab 或任意符合 OAuth 2.0 规范的第三方平台
+                  支持 GitHub / Gitee / GitLab 等第三方应用平台
                 </div>
               </div>
             </div>
 
             <!-- 通道独立启用开关 -->
-            <div class="flex items-center gap-2 pl-2 border-l border-border/60 shrink-0">
+            <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
               <Switch
                 :model-value="form.oauth2_enabled"
                 @update:model-value="(val) => (form.oauth2_enabled = val)"
@@ -865,7 +867,7 @@ onMounted(() => {
               </p>
             </div>
             <div class="flex items-center gap-1.5 shrink-0 w-full sm:w-auto">
-              <code class="text-[11px] font-mono px-2 py-1 rounded bg-background border border-border/80 text-foreground truncate max-w-[240px] sm:max-w-[320px]">
+              <code class="text-[11px] font-mono px-2 py-1 rounded bg-background border border-border/80 text-foreground truncate flex-1 min-w-0 sm:max-w-[320px]">
                 {{ oauth2RedirectUrl }}
               </code>
               <Button
@@ -1068,7 +1070,7 @@ onMounted(() => {
               size="sm"
               @click="handleTestOAuth2"
               :disabled="testingOAuth2 || saving || loading || demoMode"
-              class="h-8 px-3 text-xs font-medium shadow-xs gap-1.5"
+              class="h-8.5 px-3.5 text-xs font-medium shadow-xs gap-1.5 w-full sm:w-auto justify-center"
             >
               <Loader2 v-if="testingOAuth2" class="h-3.5 w-3.5 animate-spin" />
               <Zap v-else class="h-3.5 w-3.5 text-amber-500" />

@@ -499,13 +499,13 @@ onUnmounted(() => {
 <template>
   <div class="space-y-6">
     <!-- 头部问候与概览标题 -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-      <div>
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
         <h2 class="text-2xl font-bold tracking-tight">数据仪表</h2>
         <p class="text-xs sm:text-sm text-muted-foreground mt-0.5">实时系统运行状态、任务调度活跃度与指标汇总</p>
       </div>
-      <div class="flex items-center gap-2 self-start sm:self-auto">
-        <Badge variant="outline" class="h-6 px-2.5 text-[11px] font-normal border-border/80 text-muted-foreground gap-1.5">
+      <div class="shrink-0 pt-0.5 sm:pt-1">
+        <Badge variant="outline" class="h-6 px-2 sm:px-2.5 text-[11px] font-normal border-border/80 text-muted-foreground gap-1.5 whitespace-nowrap">
           <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
           服务正常运行
         </Badge>

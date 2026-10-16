@@ -41,7 +41,7 @@ const showSecretOAuth2 = ref(false)
 const copiedOidc = ref(false)
 const copiedOAuth2 = ref(false)
 const showGuide = ref(false)
-const configExpanded = ref(true)
+const configExpanded = ref(false)
 
 // 当前激活的配置选项卡 ('oidc' | 'oauth2')
 const activeTab = ref<'oidc' | 'oauth2'>('oidc')
@@ -378,7 +378,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <Card class="shadow-sm flex flex-col justify-between pt-4 pb-5">
+  <Card class="shadow-sm flex flex-col justify-between pt-4" :class="configExpanded ? 'pb-5' : 'pb-4'">
     <!-- 卡片头部：图标、标题、副标题与全局状态 -->
     <CardHeader class="pb-3 pt-0 px-4 sm:px-5">
       <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5 sm:gap-4">

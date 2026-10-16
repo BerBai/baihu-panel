@@ -13,6 +13,7 @@ import (
 )
 
 type Controllers struct {
+	Public       *controllers.PublicController
 	Task         *controllers.TaskController
 	Auth         *controllers.AuthController
 	Env          *controllers.EnvController

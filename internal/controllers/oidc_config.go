@@ -90,6 +90,53 @@ func NormalizeIssuer(raw string) string {
 	return u
 }
 
+// ResolveSSOStatus 解析当前单点登录启用状态与展示信息（公开无敏感信息，用于 /public/settings）
+func ResolveSSOStatus(settingsService *services.SettingsService) gin.H {
+	if constant.DemoMode || settingsService == nil {
+		return gin.H{"enabled": false}
+	}
+
+	if settingsService.Get(constant.SectionSecurity, constant.KeyOidcEnabled) != "true" {
+		return gin.H{"enabled": false}
+	}
+
+	clientID := strings.TrimSpace(settingsService.Get(constant.SectionSecurity, constant.KeyOidcClientID))
+	if clientID == "" {
+		return gin.H{"enabled": false}
+	}
+
+	ssoType := settingsService.Get(constant.SectionSecurity, constant.KeyOidcType)
+	if ssoType == constant.SSOTypeOAuth2 {
+		authURL := strings.TrimSpace(settingsService.Get(constant.SectionSecurity, constant.KeyOauth2AuthURL))
+		tokenURL := strings.TrimSpace(settingsService.Get(constant.SectionSecurity, constant.KeyOauth2TokenURL))
+		userinfoURL := strings.TrimSpace(settingsService.Get(constant.SectionSecurity, constant.KeyOauth2UserinfoURL))
+		if authURL == "" || tokenURL == "" || userinfoURL == "" {
+			return gin.H{"enabled": false}
+		}
+		displayName := strings.TrimSpace(settingsService.Get(constant.SectionSecurity, constant.KeyOauth2Name))
+		if displayName == "" {
+			displayName = "OAuth 2.0"
+		}
+		return gin.H{
+			"enabled": true,
+			"type":    constant.SSOTypeOAuth2,
+			"name":    displayName,
+		}
+	}
+
+	// OIDC 模式
+	issuer := NormalizeIssuer(settingsService.Get(constant.SectionSecurity, constant.KeyOidcIssuer))
+	if issuer == "" {
+		return gin.H{"enabled": false}
+	}
+
+	return gin.H{
+		"enabled": true,
+		"type":    constant.SSOTypeOIDC,
+		"name":    "OIDC",
+	}
+}
+
 // oidcConfig 读取并校验单点登录（OIDC / OAuth 2.0）设置；未启用或配置不全时返回 nil
 func (ac *AuthController) oidcConfig(ctx ...*gin.Context) *oidcConfig {
 	if ac.settingsService.Get(constant.SectionSecurity, constant.KeyOidcEnabled) != "true" {

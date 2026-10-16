@@ -18,33 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// OidcStatus 供登录页判断是否展示 SSO (OIDC / OAuth 2.0) 登录按钮及显示名称
-func (ac *AuthController) OidcStatus(c *gin.Context) {
-	if constant.DemoMode {
-		utils.Success(c, gin.H{"enabled": false})
-		return
-	}
-	cfg := ac.oidcConfig(c)
-	if cfg == nil {
-		utils.Success(c, gin.H{"enabled": false})
-		return
-	}
 
-	name := "OIDC"
-	if cfg.Type == constant.SSOTypeOAuth2 {
-		if cfg.DisplayName != "" {
-			name = cfg.DisplayName
-		} else {
-			name = "OAuth 2.0"
-		}
-	}
-
-	utils.Success(c, gin.H{
-		"enabled": true,
-		"type":    cfg.Type,
-		"name":    name,
-	})
-}
 
 // OidcTestRequest 连通性测试请求参数
 type OidcTestRequest struct {

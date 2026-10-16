@@ -88,6 +88,15 @@ async function loadSiteSettings() {
       password.value = '123456'
     }
 
+    // 同步设置单点登录 (SSO) 状态，首屏一次性就绪
+    if (res.sso) {
+      oidcEnabled.value = !!res.sso.enabled
+      ssoType.value = res.sso.type || 'oidc'
+      ssoName.value = res.sso.name || (ssoType.value === 'oauth2' ? 'OAuth 2.0' : 'OIDC')
+    } else {
+      oidcEnabled.value = false
+    }
+
     // 设置 favicon
     if (siteIcon.value && siteIcon.value.trim().startsWith('<svg')) {
       const blob = new Blob([siteIcon.value], { type: 'image/svg+xml' })
@@ -148,20 +157,7 @@ function handleBack() {
 
 onMounted(() => {
   loadSiteSettings()
-  loadOidcStatus()
 })
-
-// 查询是否启用单点登录，启用则展示对应平台的登录按钮
-async function loadOidcStatus() {
-  try {
-    const res = await api.auth.oidcStatus()
-    oidcEnabled.value = !!res?.enabled
-    ssoType.value = res?.type || 'oidc'
-    ssoName.value = res?.name || (ssoType.value === 'oauth2' ? 'OAuth 2.0' : 'OIDC')
-  } catch {
-    oidcEnabled.value = false
-  }
-}
 
 function handleOidcLogin() {
   const baseUrl = (window as any).__BASE_URL__ || ''

@@ -191,31 +191,7 @@ func (sc *SettingsController) GetSiteSettings(c *gin.Context) {
 	utils.Success(c, settings)
 }
 
-// GetPublicSiteSettings 获取公开的站点设置（无需认证）
-func (sc *SettingsController) GetPublicSiteSettings(c *gin.Context) {
-	settings := sc.settingsService.GetSection(constant.SectionSite)
-	
-	title := settings[constant.KeyTitle]
-	if title == "" {
-		title = "白虎面板"
-	}
-	subtitle := settings[constant.KeySubtitle]
-	if subtitle == "" {
-		subtitle = "极致轻量、高性能的自动化任务调度平台"
-	}
-	icon := settings[constant.KeyIcon]
-	if icon == "" {
-		icon = constant.DefaultIcon
-	}
 
-	// 只返回公开信息
-	utils.Success(c, gin.H{
-		constant.KeyTitle:    title,
-		constant.KeySubtitle: subtitle,
-		constant.KeyIcon:     icon,
-		"demo_mode":          constant.DemoMode,
-	})
-}
 
 // UpdateSiteSettings 更新站点设置
 func (sc *SettingsController) UpdateSiteSettings(c *gin.Context) {

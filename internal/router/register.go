@@ -57,6 +57,7 @@ func RegisterControllers() *Controllers {
 
 	// 初始化并返回控制器
 	return &Controllers{
+		Public:       controllers.NewPublicController(settingsService),
 		Task:         taskController,
 		Auth:         controllers.NewAuthController(userService, settingsService, loginLogService),
 		Env:          envController,

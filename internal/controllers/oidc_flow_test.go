@@ -284,18 +284,19 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 	}
 
 	ac := NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
+	pc := NewPublicController(settings)
 
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/status", ac.OidcStatus)
+	router.GET("/api/v1/public/settings", pc.GetPublicSettings)
 	router.GET("/api/v1/auth/oidc/login", ac.OidcLogin)
 	router.GET("/api/v1/auth/oidc/callback", ac.OidcCallback)
 
-	// 3. 验证 status 接口返回正确名称与类型
-	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/status", nil)
+	// 3. 验证 public/settings 接口返回正确 sso 名称与类型
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/public/settings", nil)
 	statusW := httptest.NewRecorder()
 	router.ServeHTTP(statusW, statusReq)
 	if statusW.Code != http.StatusOK || !strings.Contains(statusW.Body.String(), "GitHub") {
-		t.Fatalf("OidcStatus 响应不符合预期: %s", statusW.Body.String())
+		t.Fatalf("GetPublicSettings SSO 响应不符合预期: %s", statusW.Body.String())
 	}
 
 	// 4. 发起登录
@@ -335,8 +336,8 @@ func TestOAuth2LoginFlowAutoCreate(t *testing.T) {
 	}
 }
 
-// 验证当管理员未配置 oidc_redirect_url 时，OidcStatus 能自动兜底推导并正常返回 enabled: true
-func TestOidcStatusWithoutRedirectUrlFallback(t *testing.T) {
+// 验证当管理员启用单点登录时，/settings/public 能自动推导并在 sso 字段中正常返回 enabled: true
+func TestPublicSiteSettingsSSOFallback(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("初始化测试内存数据库失败: %v", err)
@@ -350,17 +351,16 @@ func TestOidcStatusWithoutRedirectUrlFallback(t *testing.T) {
 		constant.KeyOidcType:     "oidc",
 		constant.KeyOidcIssuer:   "https://id.example.com",
 		constant.KeyOidcClientID: "my-client",
-		// 注意：此处故意留空 KeyOidcRedirectURL
 		constant.KeyOidcRedirectURL: "",
 	} {
 		_ = settings.Set(constant.SectionSecurity, k, v)
 	}
 
-	ac := NewAuthController(services.NewUserService(), settings, services.NewLoginLogService())
+	pc := NewPublicController(settings)
 	router := gin.New()
-	router.GET("/api/v1/auth/oidc/status", ac.OidcStatus)
+	router.GET("/api/v1/public/settings", pc.GetPublicSettings)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/oidc/status", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/public/settings", nil)
 	req.Host = "panel.test.com"
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -369,7 +369,7 @@ func TestOidcStatusWithoutRedirectUrlFallback(t *testing.T) {
 		t.Fatalf("期望状态码 200，实际: %d (%s)", w.Code, w.Body.String())
 	}
 	if !strings.Contains(w.Body.String(), `"enabled":true`) {
-		t.Fatalf("当 redirect_url 为空时，OidcStatus 未能自动 fallback，响应: %s", w.Body.String())
+		t.Fatalf("public/settings 未能正确包含 sso enabled: true，响应: %s", w.Body.String())
 	}
 }
 

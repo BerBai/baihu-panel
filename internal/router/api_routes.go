@@ -29,14 +29,13 @@ func initPublicAPIRoutes(api *gin.RouterGroup, c *Controllers) {
 	// OIDC 单点登录（浏览器重定向流程，不参与 API/MCP 认证）
 	authOidc := api.Group("/auth/oidc")
 	{
-		authOidc.GET("/status", c.Auth.OidcStatus)
 		authOidc.GET("/login", c.Auth.OidcLogin)
 		authOidc.GET("/callback", c.Auth.OidcCallback)
 		authOidc.POST("/test", c.Auth.OidcTest)
 	}
 
-	// 公开的站点设置（无需认证）
-	api.GET("/settings/public", c.Settings.GetPublicSiteSettings)
+	// 公开的站点元数据与 SSO 状态（无需认证，Public 控制器统一托管）
+	api.GET("/public/settings", c.Public.GetPublicSettings)
 
 	// 隧道模式 (被控端反向连入，使用独立 Token 做 WebSocket 鉴权)
 	api.GET("/interconnect/tunnel", c.Interconnect.HandleTunnel)

@@ -152,13 +152,15 @@ export async function checkAuth(): Promise<boolean> {
 }
 
 export const api = {
+  public: {
+    getSettings: () => request<{ title: string; subtitle: string; icon: string; demo_mode: boolean; sso?: { enabled: boolean; type?: string; name?: string } }>('/public/settings'),
+  },
   auth: {
     login: (data: { username: string; password: string }) =>
       request<{ user: string; require_otp?: boolean; otp_pending_token?: string }>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
     loginOtp: (data: { otp_pending_token: string; code: string }) =>
       request<{ user: string }>('/auth/login/otp', { method: 'POST', body: JSON.stringify(data) }),
     logout: () => request('/auth/logout', { method: 'POST' }),
-    oidcStatus: () => request<{ enabled: boolean; type?: string; name?: string }>('/auth/oidc/status'),
     oidcTest: (data: { type: string; issuer?: string; oauth2_auth_url?: string; oauth2_token_url?: string; oauth2_userinfo_url?: string }) =>
       request<{ message: string; endpoints?: any; claims?: any }>('/auth/oidc/test', { method: 'POST', body: JSON.stringify(data) }),
     me: () => request<{ username: string; role: string }>('/auth/me'),
@@ -302,7 +304,7 @@ export const api = {
     changePassword: (data: { old_username?: string; username?: string; old_password: string; new_password?: string }) =>
       request('/settings/password', { method: 'POST', body: JSON.stringify(data) }),
     getSite: () => request<SiteSettings>('/settings/site'),
-    getPublicSite: () => request<{ title: string; subtitle: string; icon: string; demo_mode: boolean }>('/settings/public'),
+    getPublicSite: () => api.public.getSettings(),
     updateSite: (data: SiteSettings) =>
       request('/settings/site', { method: 'PUT', body: JSON.stringify(data) }),
     generateOpenapiToken: () => request<{ token: string }>('/settings/site/openapi-token/generate', { method: 'POST' }),

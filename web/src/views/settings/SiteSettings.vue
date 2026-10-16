@@ -444,10 +444,10 @@ onMounted(loadSettings)
 
             <!-- 模块 2.1: 模型上下文协议 (MCP) 快捷连接指引 -->
             <div class="pt-2 border-t border-border/60">
-              <div class="p-3.5 rounded-xl border bg-gradient-to-br from-purple-500/5 via-background to-sky-500/5 border-purple-500/25 space-y-3">
+              <div class="p-3.5 rounded-xl border bg-gradient-to-br from-purple-500/[0.03] via-background to-sky-500/[0.03] border-border/70 space-y-3">
                 <div class="flex items-center justify-between gap-2 flex-wrap">
                   <div class="flex items-center gap-1.5 shrink-0">
-                    <Sparkles class="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    <Sparkles class="w-3.5 h-3.5 text-purple-400/80 shrink-0" />
                     <span class="text-xs font-bold text-foreground whitespace-nowrap">AI 客户端连接 (MCP)</span>
                     <Badge
                       v-if="isDemoMode"
@@ -456,7 +456,7 @@ onMounted(loadSettings)
                     >
                       演示模式禁用
                     </Badge>
-                    <Badge v-else variant="outline" class="font-normal text-[9px] px-1.5 py-0 h-4 border-purple-500/30 text-purple-600 dark:text-purple-400 shrink-0">
+                    <Badge v-else variant="outline" class="font-normal text-[9px] px-1.5 py-0 h-4 border-border/70 bg-muted/40 text-muted-foreground shrink-0">
                       Cursor / Claude
                     </Badge>
                   </div>
@@ -464,16 +464,16 @@ onMounted(loadSettings)
                     <a
                       href="#"
                       @click.prevent="openMcpDocs"
-                      class="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5"
+                      class="text-[11px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-0.5 transition-colors"
                     >
                       <span>MCP 指南</span>
                       <ExternalLink class="w-2.5 h-2.5" />
                     </a>
-                    <span class="text-border">|</span>
+                    <span class="text-border/80">|</span>
                     <button
                       type="button"
                       @click="showMcpSnippet = !showMcpSnippet"
-                      class="text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-0.5"
+                      class="text-[11px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-0.5 transition-colors"
                     >
                       <span>{{ showMcpSnippet ? '收起配置' : '配置示例' }}</span>
                     </button>
@@ -520,7 +520,7 @@ onMounted(loadSettings)
                   <div class="text-[11px] text-muted-foreground flex items-center justify-between gap-2 flex-wrap">
                     <div class="flex items-center gap-1 min-w-0">
                       <span>连接 URL</span>
-                      <span class="font-mono text-[10px] text-purple-600 dark:text-purple-400">
+                      <span class="font-mono text-[10px] text-muted-foreground/80">
                         ({{ mcpProtocol === 'streamable' ? '/open2api/v1/mcp' : '/open2api/v1/mcp/sse' }})
                       </span>
                     </div>
@@ -557,7 +557,7 @@ onMounted(loadSettings)
                       type="button"
                       @click="copyMcpConfigJson"
                       :disabled="isDemoMode"
-                      class="text-[10px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                      class="text-[10px] text-muted-foreground hover:text-foreground hover:underline flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <Copy class="w-2.5 h-2.5" />
                       <span>复制配置 JSON</span>

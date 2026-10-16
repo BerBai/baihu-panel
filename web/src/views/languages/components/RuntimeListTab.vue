@@ -46,8 +46,8 @@ const filteredLanguages = computed(() => {
 </script>
 
 <template>
-    <div class="rounded-lg border bg-card overflow-hidden">
-        <div class="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b bg-muted/30 gap-2 sm:gap-4">
+    <div class="rounded-lg border bg-card overflow-hidden flex flex-col flex-1 min-h-0">
+        <div class="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-3 border-b bg-muted/30 gap-2 sm:gap-4 shrink-0">
             <div class="relative w-full sm:w-64 group">
                 <Search
                     class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/60 transition-colors group-focus-within:text-primary" />
@@ -68,7 +68,7 @@ const filteredLanguages = computed(() => {
             </div>
         </div>
 
-        <div class="max-h-[700px] overflow-y-auto min-h-[200px] p-3 sm:p-4">
+        <div class="flex-1 overflow-y-auto min-h-0 p-3 sm:p-4">
             <div v-if="loading && languages.length === 0" class="text-center py-12 text-muted-foreground">
                 <Loader2 class="h-8 w-8 animate-spin mx-auto mb-2 opacity-20" />
                 正在扫描运行环境...

@@ -443,13 +443,13 @@ watch(() => route.query, (newQuery) => {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 w-full">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
       <div>
         <h2 class="text-xl sm:text-2xl font-bold tracking-tight">执行历史</h2>
         <p class="text-muted-foreground text-sm">查看任务执行记录和日志</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 w-full sm:w-auto">
         <div class="relative flex-1 sm:flex-none">
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input v-model="filterKeyword" placeholder="搜索任务..." class="h-9 pl-9 w-full sm:w-40 md:w-56 text-sm"
@@ -492,14 +492,15 @@ watch(() => route.query, (newQuery) => {
       </div>
     </div>
 
-    <div class="flex flex-col lg:flex-row gap-4 items-start">
+    <div class="flex flex-col lg:flex-row gap-4 lg:items-start w-full">
       <!-- 日志列表 -->
-      <div class="flex-1 min-w-0 rounded-lg border bg-card overflow-hidden"
+      <div class="w-full flex-1 min-w-0 rounded-lg border bg-card overflow-hidden"
         :class="selectedLog ? 'hidden lg:block' : 'block'">
         <!-- 小屏表头 -->
         <div
           class="flex sm:hidden items-center gap-1.5 px-3 h-[28px] border-b bg-muted/20 text-xs text-muted-foreground font-medium">
-          <span class="w-10 shrink-0 pl-1">序号</span>
+          <span class="w-2 shrink-0" />
+          <span class="w-10 shrink-0">序号</span>
           <span class="w-8 shrink-0 text-center whitespace-nowrap">类型</span>
           <span class="flex-1 min-w-0">任务名称</span>
           <span class="w-14 text-right shrink-0">耗时</span>
@@ -507,9 +508,10 @@ watch(() => route.query, (newQuery) => {
         </div>
         <!-- 大屏表头 -->
         <div
-          class="hidden sm:flex items-center gap-4 px-4 h-[28px] border-b bg-muted/20 text-xs text-muted-foreground font-medium">
-          <span class="w-16 shrink-0 pl-1">序号</span>
-          <span class="w-12 shrink-0 text-center">类型</span>
+          class="hidden sm:flex items-center gap-2 px-4 h-[28px] border-b bg-muted/20 text-xs text-muted-foreground font-medium">
+          <span class="w-2 shrink-0" />
+          <span class="w-16 shrink-0">序号</span>
+          <span class="w-10 shrink-0 text-center">类型</span>
           <span class="w-36 shrink-0">任务名称</span>
           <span class="flex-1 min-w-0">命令</span>
           <span class="w-16 text-right shrink-0">耗时</span>

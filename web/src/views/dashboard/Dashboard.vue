@@ -29,9 +29,9 @@ const statItems = [
     unit: '次',
     icon: Play,
     route: '/history?date=today',
-    dotClass: 'bg-sky-500/70 dark:bg-sky-400/70',
+    dotClass: 'bg-sky-500/40 dark:bg-sky-400/35',
     topBarClass: 'bg-gradient-to-r from-sky-500/30 via-sky-400/10 to-transparent',
-    iconWrapperClass: 'bg-sky-500/8 text-sky-600/90 dark:text-sky-400/90 dark:bg-sky-400/10',
+    iconWrapperClass: 'bg-sky-500/3 text-sky-600/55 dark:text-sky-400/45 dark:bg-white/[0.025]',
     iconColor: 'text-sky-500'
   },
   {
@@ -40,9 +40,9 @@ const statItems = [
     unit: '项',
     icon: ListTodo,
     route: '/tasks',
-    dotClass: 'bg-zinc-400/80 dark:bg-zinc-400/80',
+    dotClass: 'bg-zinc-400/50 dark:bg-zinc-400/40',
     topBarClass: 'bg-gradient-to-r from-zinc-400/30 via-zinc-400/10 to-transparent',
-    iconWrapperClass: 'bg-zinc-500/8 text-zinc-600 dark:text-zinc-300 dark:bg-zinc-400/10',
+    iconWrapperClass: 'bg-zinc-500/3 text-zinc-500/70 dark:text-zinc-400/50 dark:bg-white/[0.025]',
     iconColor: 'text-zinc-400'
   },
   {
@@ -51,9 +51,9 @@ const statItems = [
     unit: '个',
     icon: Variable,
     route: '/environments',
-    dotClass: 'bg-amber-500/70 dark:bg-amber-400/70',
+    dotClass: 'bg-amber-500/40 dark:bg-amber-400/35',
     topBarClass: 'bg-gradient-to-r from-amber-500/30 via-amber-400/10 to-transparent',
-    iconWrapperClass: 'bg-amber-500/8 text-amber-600/90 dark:text-amber-400/90 dark:bg-amber-400/10',
+    iconWrapperClass: 'bg-amber-500/3 text-amber-600/55 dark:text-amber-400/45 dark:bg-white/[0.025]',
     iconColor: 'text-amber-500'
   },
   {
@@ -62,9 +62,9 @@ const statItems = [
     unit: '条',
     icon: ScrollText,
     route: '/history',
-    dotClass: 'bg-slate-400/80 dark:bg-slate-400/80',
+    dotClass: 'bg-slate-400/50 dark:bg-slate-400/40',
     topBarClass: 'bg-gradient-to-r from-slate-400/30 via-slate-400/10 to-transparent',
-    iconWrapperClass: 'bg-slate-500/8 text-slate-600 dark:text-slate-300 dark:bg-slate-400/10',
+    iconWrapperClass: 'bg-slate-500/3 text-slate-500/70 dark:text-slate-400/50 dark:bg-white/[0.025]',
     iconColor: 'text-slate-400'
   },
   {
@@ -73,9 +73,9 @@ const statItems = [
     unit: '项',
     icon: Clock,
     route: '/tasks?enabled=1&type=all',
-    dotClass: 'bg-indigo-500/70 dark:bg-indigo-400/70',
+    dotClass: 'bg-indigo-500/40 dark:bg-indigo-400/35',
     topBarClass: 'bg-gradient-to-r from-indigo-500/30 via-indigo-400/10 to-transparent',
-    iconWrapperClass: 'bg-indigo-500/8 text-indigo-600/90 dark:text-indigo-400/90 dark:bg-indigo-400/10',
+    iconWrapperClass: 'bg-indigo-500/3 text-indigo-600/55 dark:text-indigo-400/45 dark:bg-white/[0.025]',
     iconColor: 'text-indigo-500'
   },
   {
@@ -84,9 +84,9 @@ const statItems = [
     unit: '个',
     icon: Activity,
     route: '/history?status=running',
-    dotClass: 'bg-emerald-500/70 dark:bg-emerald-400/70',
+    dotClass: 'bg-emerald-500/40 dark:bg-emerald-400/35',
     topBarClass: 'bg-gradient-to-r from-emerald-500/30 via-emerald-400/10 to-transparent',
-    iconWrapperClass: 'bg-emerald-500/8 text-emerald-600/90 dark:text-emerald-400/90 dark:bg-emerald-400/10',
+    iconWrapperClass: 'bg-emerald-500/3 text-emerald-600/55 dark:text-emerald-400/45 dark:bg-white/[0.025]',
     iconColor: 'text-emerald-500'
   },
 ]
@@ -529,7 +529,7 @@ onUnmounted(() => {
         <!-- 右下角巨幅微弱水印背景图标 (极弱质感衬底) -->
         <component
           :is="item.icon"
-          class="absolute -right-2.5 -bottom-2.5 w-16 h-16 opacity-[0.025] dark:opacity-[0.045] group-hover:opacity-[0.055] dark:group-hover:opacity-[0.08] group-hover:scale-105 transition-all duration-500 pointer-events-none select-none"
+          class="absolute -right-2.5 -bottom-2.5 w-16 h-16 opacity-[0.015] dark:opacity-[0.02] group-hover:opacity-[0.03] dark:group-hover:opacity-[0.04] group-hover:scale-105 transition-all duration-500 pointer-events-none select-none"
           :class="item.iconColor"
         />
 
@@ -605,15 +605,22 @@ onUnmounted(() => {
             </Badge>
           </div>
         </CardHeader>
-        <CardContent class="relative pt-2 pb-2.5 px-2 sm:px-4 flex-1 min-h-[285px]">
-          <div id="stats-chart" class="w-full h-full"></div>
-          <div v-if="!chartsLoaded"
-            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-              <span>数据加载中...</span>
+        <CardContent class="relative pt-2 pb-2.5 px-2 sm:px-4 flex-1 min-h-[280px] sm:min-h-[310px] flex flex-col justify-center">
+          <div id="stats-chart" class="w-full h-full min-h-[260px] sm:min-h-[290px]"></div>
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            leave-active-class="transition-opacity duration-200 pointer-events-none"
+            enter-from-class="opacity-0"
+            leave-to-class="opacity-0"
+          >
+            <div v-if="!chartsLoaded"
+              class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm z-10">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                <span>数据加载中...</span>
+              </div>
             </div>
-          </div>
+          </Transition>
         </CardContent>
       </Card>
 
@@ -635,16 +642,23 @@ onUnmounted(() => {
             Top 任务
           </Badge>
         </CardHeader>
-        <CardContent class="relative pt-2 pb-2.5 px-4 flex-1 min-h-[285px] flex items-center justify-center">
-          <div id="pie-chart" class="w-full h-full"></div>
-          <div v-if="!chartsLoaded"
-            class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm">
-            <div class="flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
-              <span>数据加载中...</span>
+        <CardContent class="relative pt-2 pb-2.5 px-4 flex-1 min-h-[280px] sm:min-h-[310px] flex items-center justify-center">
+          <div id="pie-chart" class="w-full h-full min-h-[240px] sm:min-h-[275px] flex items-center justify-center"></div>
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            leave-active-class="transition-opacity duration-200 pointer-events-none"
+            enter-from-class="opacity-0"
+            leave-to-class="opacity-0"
+          >
+            <div v-if="!chartsLoaded"
+              class="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-card/80 backdrop-blur-sm z-10">
+              <div class="flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                <span>数据加载中...</span>
+              </div>
             </div>
-          </div>
-          <div v-else-if="taskStats.length === 0"
+          </Transition>
+          <div v-if="chartsLoaded && taskStats.length === 0"
             class="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground text-xs bg-card/80">
             <PieIcon class="w-8 h-8 opacity-20 mb-2" />
             <span>暂无任务执行数据</span>

@@ -146,9 +146,9 @@ onMounted(() => {
 </script>
 
 <template>
-    <div class="space-y-4">
+    <div class="space-y-4 flex flex-col flex-1 min-h-0">
         <!-- 顶栏：标题与操作 -->
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
             <div>
                 <h2 class="text-xl sm:text-2xl font-bold tracking-tight">语言依赖</h2>
                 <p class="text-muted-foreground text-sm mt-0.5">管理编程语言及相关包依赖(Mise)</p>
@@ -173,7 +173,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <div class="flex flex-col gap-2.5">
+        <div class="flex flex-col gap-2.5 shrink-0">
             <div
                 class="flex items-center gap-2.5 text-[13px] text-amber-600 dark:text-amber-500 bg-amber-500/10 px-4 py-2.5 rounded-lg border border-amber-500/20 leading-relaxed shadow-sm select-none">
                 <AlertCircle class="h-4 w-4 shrink-0" />
@@ -203,14 +203,14 @@ onMounted(() => {
             </div>
         </div>
 
-        <Tabs v-model="activeTab" class="w-full">
+        <Tabs v-model="activeTab" class="w-full flex-1 flex flex-col min-h-0">
             <div v-if="errorMsg"
-                class="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-center gap-3 text-destructive mb-4">
+                class="bg-destructive/10 border border-destructive/20 rounded-lg p-4 flex items-center gap-3 text-destructive mb-4 shrink-0">
                 <AlertCircle class="h-5 w-5 shrink-0" />
                 <p class="text-sm font-medium">{{ errorMsg }}</p>
             </div>
 
-            <TabsContent value="runtimes" class="space-y-4 outline-none">
+            <TabsContent value="runtimes" class="outline-none flex-1 flex flex-col min-h-0 m-0">
                 <RuntimeListTab 
                     :languages="languages" 
                     :loading="loading" 
@@ -224,7 +224,7 @@ onMounted(() => {
                 />
             </TabsContent>
 
-            <TabsContent value="envs" class="space-y-4 outline-none">
+            <TabsContent value="envs" class="outline-none flex-1 flex flex-col min-h-0 m-0">
                 <EnvMirrorTab />
             </TabsContent>
         </Tabs>

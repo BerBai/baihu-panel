@@ -802,7 +802,7 @@ onMounted(loadSettings)
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">MB</span>
                 </div>
-                <p class="text-[10px] text-muted-foreground">文件缓存超此大小时介入 (默认 60MB)</p>
+                <p class="text-[10px] text-muted-foreground">限额容器超此阈值介入 (默认 60MB，无限额时 512MB)</p>
               </div>
             </div>
 
@@ -813,8 +813,8 @@ onMounted(loadSettings)
                   <Sparkles class="w-4 h-4" />
                 </div>
                 <div class="min-w-0">
-                  <div class="text-xs font-semibold text-foreground truncate">任务结束自动回收</div>
-                  <div class="text-[10px] text-muted-foreground truncate">任务全部执行平息后，自动释放脚本产物与环境依赖缓存</div>
+                  <div class="text-xs font-semibold text-foreground truncate">任务结束工作区清理</div>
+                  <div class="text-[10px] text-muted-foreground truncate">任务平息后局部清理工作区产物（基础语言底座保持内存常驻防 IO 震荡）</div>
                 </div>
               </div>
               <div class="flex items-center gap-3 shrink-0 self-end sm:self-auto">
@@ -843,7 +843,7 @@ onMounted(loadSettings)
                 <Info class="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                 <div class="leading-relaxed">
                   <span class="font-medium text-foreground">回收说明：</span>
-                  平时保留缓存以加速磁盘读写，仅在内存超标或任务执行完成后自动安全释放，避免容器内存堆积。
+                  基础语言环境（Python/Node/Mise等）始终保持内存常驻以保障任务秒级启动与 0 读盘；仅在内存超标或任务执行完成后对其局部工作区安全防抖清理（30秒冷却），避免容器内存与临时产物堆积。
                 </div>
               </div>
             </div>

@@ -151,25 +151,54 @@ export async function checkAuth(): Promise<boolean> {
   }
 }
 
+export interface PublicSettingsResponse {
+  title: string
+  subtitle: string
+  icon: string
+  demo_mode: boolean
+  sso?: {
+    enabled: boolean
+    type?: string
+    name?: string
+    providers?: Array<{
+      id: string
+      type: string
+      name: string
+      login_url: string
+    }>
+  }
+}
+
+// 并发请求防抖 Promise 与单页内存缓存
+let publicSettingsPromise: Promise<PublicSettingsResponse> | null = null
+let publicSettingsCache: PublicSettingsResponse | null = null
+
+export function clearPublicSettingsCache() {
+  publicSettingsCache = null
+  publicSettingsPromise = null
+}
+
 export const api = {
   public: {
-    getSettings: () => request<{
-      title: string
-      subtitle: string
-      icon: string
-      demo_mode: boolean
-      sso?: {
-        enabled: boolean
-        type?: string
-        name?: string
-        providers?: Array<{
-          id: string
-          type: string
-          name: string
-          login_url: string
-        }>
+    getSettings: (forceRefresh = false): Promise<PublicSettingsResponse> => {
+      if (!forceRefresh && publicSettingsCache) {
+        return Promise.resolve(publicSettingsCache)
       }
-    }>('/public/settings'),
+      if (!forceRefresh && publicSettingsPromise) {
+        return publicSettingsPromise
+      }
+      publicSettingsPromise = request<PublicSettingsResponse>('/public/settings')
+        .then((res) => {
+          publicSettingsCache = res
+          publicSettingsPromise = null
+          return res
+        })
+        .catch((err) => {
+          publicSettingsPromise = null
+          throw err
+        })
+      return publicSettingsPromise
+    },
   },
   auth: {
     login: (data: { username: string; password: string }) =>
@@ -322,9 +351,11 @@ export const api = {
     changePassword: (data: { old_username?: string; username?: string; old_password: string; new_password?: string }) =>
       request('/settings/password', { method: 'POST', body: JSON.stringify(data) }),
     getSite: () => request<SiteSettings>('/settings/site'),
-    getPublicSite: () => api.public.getSettings(),
-    updateSite: (data: SiteSettings) =>
-      request('/settings/site', { method: 'PUT', body: JSON.stringify(data) }),
+    getPublicSite: (forceRefresh = false) => api.public.getSettings(forceRefresh),
+    updateSite: (data: SiteSettings) => {
+      clearPublicSettingsCache()
+      return request('/settings/site', { method: 'PUT', body: JSON.stringify(data) })
+    },
     generateOpenapiToken: () => request<{ token: string }>('/settings/site/openapi-token/generate', { method: 'POST' }),
     trimCache: () => request<{ message: string; trimmed_files: number }>('/settings/site/trim-cache', { method: 'POST' }),
     getScheduler: () => request<SchedulerSettings>('/settings/scheduler'),
@@ -335,8 +366,10 @@ export const api = {
     getChangelog: () => request<string>('/settings/changelog'),
     get: (section: string, key: string) => request<string>(`/settings/${section}/${key}`),
     getSection: (section: string) => request<Record<string, string>>(`/settings/${section}`),
-    setSection: (section: string, values: Record<string, string>) =>
-      request(`/settings/${section}`, { method: 'PUT', body: JSON.stringify(values) }),
+    setSection: (section: string, values: Record<string, string>) => {
+      clearPublicSettingsCache()
+      return request(`/settings/${section}`, { method: 'PUT', body: JSON.stringify(values) })
+    },
     generateToken: (section: string, key: string) =>
       request<string>(`/settings/${section}/${key}/generate`, { method: 'POST' }),
     getLoginLogs: (params?: { page?: number; page_size?: number; username?: string }) => {

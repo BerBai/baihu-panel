@@ -160,15 +160,24 @@ func (s *SettingsService) Set(section, key, value string) error {
 		err = database.DB.Model(&setting).Update("value", models.BigText(value)).Error
 	}
 
-	if err == nil && section == constant.SectionSite {
-		cache.SetSiteCache(key, value)
+	if err == nil {
+		if section == constant.SectionSite {
+			cache.SetSiteCache(key, value)
+		}
+		if section == constant.SectionSite || section == constant.SectionSecurity {
+			cache.InvalidatePublicSettingsCache()
+		}
 	}
 	return err
 }
 
 // Delete 删除单个设置
 func (s *SettingsService) Delete(section, key string) error {
-	return database.DB.Where(&models.Setting{Section: section, Key: key}).Delete(&models.Setting{}).Error
+	err := database.DB.Where(&models.Setting{Section: section, Key: key}).Delete(&models.Setting{}).Error
+	if err == nil && (section == constant.SectionSite || section == constant.SectionSecurity) {
+		cache.InvalidatePublicSettingsCache()
+	}
+	return err
 }
 
 // GetSection 获取整个 section 的设置
@@ -208,6 +217,9 @@ func (s *SettingsService) SetSection(section string, values map[string]string) e
 	}
 	if section == constant.SectionSite {
 		cache.SetSiteCacheBatch(values)
+	}
+	if section == constant.SectionSite || section == constant.SectionSecurity {
+		cache.InvalidatePublicSettingsCache()
 	}
 	return nil
 }

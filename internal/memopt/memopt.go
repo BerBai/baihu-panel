@@ -177,44 +177,30 @@ func filterValidTargets(targets []string) []string {
 	return validTargets
 }
 
-// GetContainerTrimTargets 统一集中获取容器常驻运行期需重点回收 Page Cache 的目标清单
-// 将重点单体 CLI、多语言环境、基础底座、工作区与任务目录集中收敛定义，杜绝分散割裂
+// GetContainerTrimTargets 获取容器常驻运行期动态可回收的 Page Cache 目标清单
+// 【核心优化】：坚决剔除 /usr/local/bin/mise、ContainerMiseBaseDir (/opt/mise-base) 与多语言环境目录，
+// 确保 Python、Node、.NET 等多语言运行时解释器与核心 CLI 常驻内存，杜绝任务重复冷读盘引发 Block I/O 暴涨
 func GetContainerTrimTargets(extraDirs ...string) []string {
-	targets := make([]string, 0, 10+len(extraDirs))
+	targets := make([]string, 0, 5+len(extraDirs))
 
-	// 1. 显式传入的任务工作目录
+	// 1. 显式传入的任务局部工作目录
 	for _, d := range extraDirs {
 		if d != "" {
 			targets = append(targets, d)
 		}
 	}
 
-	// 2. 重点单体 CLI 二进制文件：mise 与白虎主程序等（单体120MB+），运行任务后常驻 Active File
-	if utils.IsRunningInDocker() {
-		targets = append(targets, "/usr/local/bin/mise", "/app/baihu")
-	}
-
-	// 3. 用户环境目录（node、dotnet、python等产物，由 walkDirLimited 自动遍历其子目录）
-	if miseDataDir := constant.ResolveMiseDataDir(); miseDataDir != "" {
-		targets = append(targets, miseDataDir)
-	}
-
-	// 4. 容器预置基础语言底座（针对启动期与基础镜像环境）
-	if constant.ContainerMiseBaseDir != "" {
-		targets = append(targets, constant.ContainerMiseBaseDir)
-	}
-
-	// 5. 任务脚本工作目录（所有应用与脚本仓库存放地）
+	// 2. 任务脚本工作目录（按需回收工作区动态产物）
 	if constant.ScriptsWorkDir != "" {
 		targets = append(targets, constant.ScriptsWorkDir)
 	}
 
-	// 6. 系统与任务执行日志目录（高频磁盘落盘产生 Page Cache）
+	// 3. 系统与任务执行日志目录（高频磁盘落盘产生 Page Cache）
 	if constant.LogsDir != "" {
 		targets = append(targets, constant.LogsDir)
 	}
 
-	// 7. 支持通过环境变量附加扩展目录（以逗号、分号或冒号分隔）
+	// 4. 支持通过环境变量附加扩展目录（以逗号、分号或冒号分隔）
 	if envExtra := os.Getenv(constant.EnvKeyCacheTrimDirs); envExtra != "" {
 		for _, dir := range strings.FieldsFunc(envExtra, func(r rune) bool {
 			return r == ',' || r == ';' || r == ':'
@@ -226,6 +212,22 @@ func GetContainerTrimTargets(extraDirs ...string) []string {
 		}
 	}
 
+	return filterValidTargets(targets)
+}
+
+// GetContainerStartupTrimTargets 系统启动就绪时的一次性全量清单
+// 仅在系统首次启动就绪时调用，释放容器基础镜像初始化与装载期间产生的只读底座临时缓存
+func GetContainerStartupTrimTargets() []string {
+	targets := GetContainerTrimTargets()
+	if utils.IsRunningInDocker() {
+		targets = append(targets, "/usr/local/bin/mise", "/app/baihu")
+		if constant.ContainerMiseBaseDir != "" {
+			targets = append(targets, constant.ContainerMiseBaseDir)
+		}
+		if miseDataDir := constant.ResolveMiseDataDir(); miseDataDir != "" {
+			targets = append(targets, miseDataDir)
+		}
+	}
 	return filterValidTargets(targets)
 }
 
@@ -266,7 +268,7 @@ func TrimContainerStartupCache() int {
 	// 优先尝试 cgroup v2 原生快速回收（启动期产生的瞬时装载与 Slab 统一回收）
 	_ = TryReclaimCgroupMemory(0)
 
-	targets := GetContainerTrimTargets()
+	targets := GetContainerStartupTrimTargets()
 	if len(targets) == 0 {
 		return 0
 	}
@@ -356,8 +358,16 @@ func AutoTrimContainerCache() bool {
 		if isHighWatermark || isCacheHeavy {
 			shouldTrim = true
 		}
-	} else if stat.TotalFileCache >= thresholdBytes {
-		shouldTrim = true
+	} else {
+		// 无内存限额模式 (LimitBytes == 0)：容器未设置 -m，没有直接 OOM 风险。
+		// 严禁使用 60MB 极低阈值误杀正常运行缓存，默认大幅提高至 512MB 以上，且仅在非活跃文件缓存显著堆积时才介入
+		unlimitedThreshold := uint64(512) * 1024 * 1024
+		if thresholdBytes > unlimitedThreshold {
+			unlimitedThreshold = thresholdBytes
+		}
+		if stat.InactiveFile >= unlimitedThreshold {
+			shouldTrim = true
+		}
 	}
 
 	if !shouldTrim {
@@ -478,9 +488,19 @@ func (d *DirDebouncer) Debounce(dir string, delay time.Duration, fn func(dir str
 	d.timers[cleanDir] = timer
 }
 
+var (
+	// dirLastTrimMap 记录每个工作目录最近一次执行 PageCache 回收的时间戳
+	dirLastTrimMap sync.Map
+	// minDirTrimInterval 同一工作目录最小回收冷却间隔（默认 30 秒，避免高频任务重复扫盘）
+	minDirTrimInterval = 30 * time.Second
+)
+
 // OnTaskFinished 任务执行完成联动回收
-// 针对大任务（耗时较长或处理大量依赖/产物文件）结束后的轻量级异步回收
-// 采用尾部防抖（Trailing Debounce）：同目录多任务密集接连结束时自动顺延合并，在最后一个任务平息后执行唯一一次彻底清理
+// 针对大任务（耗时较长或处理大量依赖/产物文件）结束后的轻量级异步局部回收
+// 【核心设计】：
+// 1. 严格仅清理当前任务的 workDir，绝不越界清理运行时底座；
+// 2. 移除对全局 AutoTrimContainerCache() 的级联调用，全局水位交由系统后台守护定时器统一调度；
+// 3. 引入 30 秒目录级冷却防抖机制，高频短任务（如每30s一次）平息期前自动跳过无谓的 DropCache。
 func OnTaskFinished(workDir string) {
 	if !utils.IsRunningInDocker() {
 		return
@@ -491,19 +511,44 @@ func OnTaskFinished(workDir string) {
 		return
 	}
 
-	// 若未指定具体工作目录，轻量延迟后直接检测容器内存水位
-	if workDir == "" {
-		go func() {
-			time.Sleep(500 * time.Millisecond)
-			AutoTrimContainerCache()
-		}()
+	// 任务若未配置独立工作目录，说明属于轻量内置任务，不执行无意义的全盘扫描
+	cleanDir := filepath.Clean(strings.TrimSpace(workDir))
+	if cleanDir == "" || cleanDir == "." || cleanDir == "/" {
 		return
 	}
 
-	// 尾部防抖窗口设为 1.5 秒：多个密集子任务接连结束时自动顺延，在最后一个任务完全平息后执行收尾
-	defaultDirDebouncer.Debounce(workDir, 1500*time.Millisecond, func(dir string) {
-		_, _ = DropCache(GetContainerTrimTargets(dir)...)
-		AutoTrimContainerCache()
+	// 必须严格限定在脚本工作区内，避免传错绝对路径导致扫描根目录
+	if constant.ScriptsWorkDir != "" && !strings.HasPrefix(cleanDir, filepath.Clean(constant.ScriptsWorkDir)) {
+		return
+	}
+
+	// 快速命中冷却判定：若 30 秒内该工作目录已清理过，直接忽略本次结束事件
+	now := time.Now()
+	if val, ok := dirLastTrimMap.Load(cleanDir); ok {
+		if lastTime, okTime := val.(time.Time); okTime && now.Sub(lastTime) < minDirTrimInterval {
+			return
+		}
+	}
+
+	// 尾部防抖窗口设为 3 秒：密集子任务连续结束时顺延合并，仅在最后一次任务平息后执行
+	defaultDirDebouncer.Debounce(cleanDir, 3*time.Second, func(dir string) {
+		// 二次校验冷却时间
+		execTime := time.Now()
+		if val, ok := dirLastTrimMap.Load(dir); ok {
+			if lastTime, okTime := val.(time.Time); okTime && execTime.Sub(lastTime) < minDirTrimInterval {
+				return
+			}
+		}
+		dirLastTrimMap.Store(dir, execTime)
+
+		// 严格且仅清理该任务自身的工作目录
+		trimmedFiles, _ := DropCache(dir)
+		if trimmedFiles > 0 {
+			logger.Debugf("[MemOpt] 任务结束工作区缓存清理完成 (%s): 释放 %d 个临时文件缓存", dir, trimmedFiles)
+		}
+
+		// 归还本次任务产生的 Go 运行时垃圾与堆物理页（仅轻量级 Free，绝不级联全盘扫描）
+		Free()
 	})
 }
 

@@ -2,6 +2,8 @@ package memopt
 
 import (
 	"testing"
+
+	"github.com/engigu/baihu-panel/internal/constant"
 )
 
 func TestMemOpt_FreeAndMetrics(t *testing.T) {
@@ -36,3 +38,27 @@ func TestMemOpt_FreeAndMetrics(t *testing.T) {
 		t.Errorf("FormatBytes 结果不符预期: %s", formatted)
 	}
 }
+
+func TestGetContainerTrimTargets_ExcludesBaseRuntime(t *testing.T) {
+	targets := GetContainerTrimTargets()
+	for _, target := range targets {
+		if target == "/usr/local/bin/mise" || target == "/app/baihu" || target == constant.ContainerMiseBaseDir {
+			t.Errorf("日常清理目标中不应包含基础运行环境底座: %s", target)
+		}
+	}
+
+	startupTargets := GetContainerStartupTrimTargets()
+	// 无论非 Docker 还是 Docker，Startup 目标数量都应 >= 日常目标
+	if len(startupTargets) < len(targets) {
+		t.Errorf("启动就绪全量目标数量 (%d) 应 >= 日常目标 (%d)", len(startupTargets), len(targets))
+	}
+}
+
+func TestOnTaskFinished_SafetyAndCooldown(t *testing.T) {
+	// 非 Docker 环境下安全退出，不发生 panic
+	OnTaskFinished("")
+	OnTaskFinished("/")
+	OnTaskFinished("/etc")
+	OnTaskFinished(constant.ScriptsWorkDir + "/my_task")
+}
+

@@ -3,7 +3,7 @@ set -e
 
 # ============================================================
 # 白虎面板 (Baihu Panel) 容器入口公共函数库 (Entrypoint Common)
-# 规范严格参考 build-go.sh 日志样式与格式化对齐
+# 规范严格参考 build-go.sh 日志样式与格式化对齐 (紧凑精简版)
 # ============================================================
 
 # ANSI 颜色与文本样式
@@ -14,13 +14,13 @@ C_GREEN="\033[1;32m"
 C_YELLOW="\033[1;33m"
 C_BLUE="\033[1;34m"
 
-# 标准日志函数
+# 标准日志函数 (紧凑输出，无多余空行)
 log_info() {
   printf "${C_CYAN}[Entrypoint]${C_RESET} %s\n" "$*"
 }
 
 log_step() {
-  printf "\n${C_BLUE}==>${C_RESET} ${C_BOLD}%s${C_RESET}\n" "$*"
+  printf "${C_BLUE}==>${C_RESET} ${C_BOLD}%s${C_RESET}\n" "$*"
 }
 
 log_success() {
@@ -65,13 +65,13 @@ init_panel_version() {
 }
 
 show_banner() {
-  _mode_title="${1:-标准容器运行环境}"
+  _mode="${1:-标准版 (Standard)}"
   init_panel_version
 
   echo "============================================================"
   echo "           白虎面板 (Baihu Panel) 容器运行环境"
   echo "============================================================"
-  log_info "当前运行模式 : ${_mode_title}"
+  log_info "容器运行模式 : ${_mode}"
   log_info "面板程序版本 : ${PANEL_VER}"
   log_info "构建时间戳   : ${BUILD_TIME}"
   log_info "系统平台架构 : ${SYS_ARCH}"
@@ -82,10 +82,8 @@ show_banner() {
 # 2. 初始化数据与脚本工作目录
 # ============================================================
 init_directories() {
-  log_step "初始化数据与脚本工作目录"
-  log_info "数据存储目录 : /app/data"
-  log_info "脚本工作目录 : /app/data/scripts"
-  log_info "配置文件目录 : /app/configs"
+  log_step "初始化基础工作目录"
+  log_info "运行数据路径 : /app/data, /app/configs, /app/envs"
 
   mkdir -p \
     /app/data \
@@ -110,9 +108,8 @@ sync_mise_environment() {
   _chown_opt="${2:-}"
   _target_dir="${3:-/app/envs/mise}"
 
-  log_step "检查并同步 Mise 基础运行底座"
-  log_info "母盘底座路径 : ${_base_dir}"
-  log_info "目标运行时库 : ${_target_dir}"
+  log_step "检查并同步 Mise 运行底座"
+  log_info "母盘底座映射 : ${_base_dir} -> ${_target_dir}"
   mkdir -p "$_target_dir"
 
   if [ -d "$_base_dir" ]; then
@@ -129,7 +126,7 @@ sync_mise_environment() {
     fi
 
     if [ "$_need_sync" -eq 1 ]; then
-      log_info "正在从底座同步 Mise 运行环境 (全新部署或镜像升级)..."
+      log_info "正在从母盘同步运行环境 (全新部署或镜像升级)..."
       if [ -n "$_chown_opt" ]; then
         rsync -a --chown="$_chown_opt" --ignore-existing "${_base_dir}/" "${_target_dir}/" || true
       else
@@ -164,17 +161,16 @@ setup_runtime_env() {
   export NODE_OPTIONS="--max-old-space-size=256"
   export PYTHONPATH=/app/data/scripts:$PYTHONPATH
 
-  log_info "系统执行路径 : ${PATH%%:*} (已注入 Mise Shims)"
+  log_info "运行时 Shims : ${PATH%%:*}"
   log_info "Python 镜像源: ${PIP_INDEX_URL}"
-  log_info "Node 内存限制: 256MB"
-  log_success "运行时环境与系统 PATH 注入完毕"
+  log_success "运行时环境变量与系统 PATH 配置完毕"
 }
 
 # ============================================================
 # 5. 验证预装语言与运行时环境
 # ============================================================
 verify_runtimes() {
-  log_step "验证预装语言与运行时环境"
+  log_step "验证核心运行时组件"
 
   _mise_ver="未安装"
   if [ -x "$(command -v mise)" ]; then
@@ -200,7 +196,7 @@ verify_runtimes() {
   log_info "Python 环境 : ${_python_ver}"
   log_info "Node.js 环境: ${_node_ver}"
   log_info "NPM 包管理器: ${_npm_ver}"
-  log_success "运行时环境核心组件自检完毕"
+  log_success "运行时核心组件自检完毕"
 }
 
 # ============================================================
@@ -225,7 +221,7 @@ setup_cli_and_completion() {
       fi
     fi
   done
-  log_success "全局命令 baihu 及 Shell 自动补全配置完成"
+  log_success "全局 CLI 命令及自动补全配置完毕"
 }
 
 # ============================================================
@@ -233,10 +229,8 @@ setup_cli_and_completion() {
 # ============================================================
 start_baihu_server() {
   log_step "启动白虎面板服务"
-  log_info "工作运行目录 : /app"
-  log_info "服务主二进制 : /app/baihu"
+  log_info "服务工作目录 : /app"
   log_success "容器初始化全部就绪，正在启动服务进程 -> tini -- baihu server"
-  echo ""
 
   cd /app
   # tini 作为 1 号进程回收孤儿进程，避免僵尸进程累积

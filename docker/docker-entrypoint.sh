@@ -10,7 +10,7 @@ COMMON_SH="${SCRIPT_DIR}/docker-entrypoint-common.sh"
 [ ! -f "$COMMON_SH" ] && COMMON_SH="/app/docker-entrypoint-common.sh"
 . "$COMMON_SH"
 
-show_banner "${BAIHU_BANNER_TITLE:-白虎面板 (Baihu Panel) 容器运行环境}"
+show_banner "${BAIHU_BANNER_MODE:-标准版 (Standard)}"
 init_directories
 sync_mise_environment "/opt/mise-base"
 setup_runtime_env

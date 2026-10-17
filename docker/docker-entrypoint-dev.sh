@@ -11,7 +11,7 @@ COMMON_SH="${SCRIPT_DIR}/docker-entrypoint-common.sh"
 [ ! -f "$COMMON_SH" ] && COMMON_SH="/usr/local/bin/docker-entrypoint-common.sh"
 . "$COMMON_SH"
 
-show_banner "开发调试环境 (Dev Mode)"
+show_banner "开发版 (Dev Mode)"
 
 ensure_cache_ownership() {
     local dir="$1"
@@ -79,6 +79,5 @@ log_step "启动开发环境服务进程"
 log_info "执行身份用户 : ${TARGET_USER} (UID: $DEV_UID, GID: $DEV_GID)"
 log_info "运行目标命令 : $*"
 log_success "开发环境初始化就绪，正在启动命令 -> gosu $DEV_UID:$DEV_GID $*"
-echo ""
 
 exec gosu "$DEV_UID:$DEV_GID" "$@"

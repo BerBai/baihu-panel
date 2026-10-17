@@ -11,7 +11,7 @@ COMMON_SH="${SCRIPT_DIR}/docker-entrypoint-common.sh"
 [ ! -f "$COMMON_SH" ] && COMMON_SH="/usr/local/bin/docker-entrypoint-common.sh"
 . "$COMMON_SH"
 
-show_banner "白虎面板 (Baihu Panel) 容器运行环境 (Dev Mode)"
+show_banner "开发调试环境 (Dev Mode)"
 
 ensure_cache_ownership() {
     local dir="$1"
@@ -25,17 +25,16 @@ ensure_cache_ownership() {
     local current_uid=$(stat -c '%u' "$dir")
     local dirty_file=$(find "$dir" -mindepth 1 ! -uid "$target_uid" -print -quit 2>/dev/null)
     if [ "$current_uid" == "$target_uid" ] && [ -z "$dirty_file" ]; then
-        log_info "Cache hit: $dir owned by $target_uid. Reusing."
+        log_info "缓存属主状态 : ${dir} (已匹配 UID: ${target_uid})"
     else
         if [ -n "$dirty_file" ]; then
-            log_warn "Dirty cache detected in $dir (Found root-owned files like $dirty_file)."
+            log_warn "检测到异常属主文件: ${dirty_file}"
         else
-            log_info "User changed ($current_uid -> $target_uid). Resetting cache in $dir..."
+            log_info "用户变更探测 : (${current_uid} -> ${target_uid})，重置缓存..."
         fi
-        log_info "Nuking directory to ensure clean state..."
         find "$dir" -mindepth 1 -delete 2>/dev/null || rm -rf "$dir"/*
         chown "$target_uid:$target_gid" "$dir"
-        log_success "Cache reset complete. Ownership transferred to $target_uid."
+        log_success "缓存目录重置完毕 -> ${dir} (属主: ${target_uid})"
     fi
 }
 
@@ -46,10 +45,10 @@ EXISTING_USER=$(getent passwd "$DEV_UID" | cut -d: -f1 | head -n 1)
 
 if [ -n "$EXISTING_USER" ]; then
     TARGET_USER="$EXISTING_USER"
-    log_info "UID $DEV_UID already exists as user '$TARGET_USER'. Using existing user."
+    log_info "开发用户状态 : 复用已有用户 '${TARGET_USER}' (UID: $DEV_UID)"
 else
     TARGET_USER="devuser"
-    log_info "Creating user '$TARGET_USER' (UID: $DEV_UID, GID: $DEV_GID)..."
+    log_info "开发用户状态 : 创建全新用户 '${TARGET_USER}' (UID: $DEV_UID, GID: $DEV_GID)"
     groupadd -o -g "$DEV_GID" devgroup
     useradd -o -u "$DEV_UID" -g "$DEV_GID" -m -s /bin/bash "$TARGET_USER"
 fi
@@ -69,14 +68,17 @@ if [ "$DEV_UID" != "0" ]; then
     ensure_cache_ownership "/var/cache/npm" "$DEV_UID" "$DEV_GID"
     ensure_cache_ownership "/go" "$DEV_UID" "$DEV_GID"
 fi
-log_success "用户与缓存目录权限配置就绪"
+log_success "开发用户与本地缓存权限配置完毕"
 
 sync_mise_environment "/opt/mise-dev" "$DEV_UID:$DEV_GID"
 setup_runtime_env
 verify_runtimes
 setup_cli_and_completion "/home/$TARGET_USER/.bashrc"
 
-log_step "环境初始化完成，准备启动命令 (用户: '$TARGET_USER', UID: $DEV_UID)..."
-printf "\n${C_GREEN}${C_BOLD}>>> Development environment ready. Starting command...${C_RESET}\n\n"
+log_step "启动开发环境服务进程"
+log_info "执行身份用户 : ${TARGET_USER} (UID: $DEV_UID, GID: $DEV_GID)"
+log_info "运行目标命令 : $*"
+log_success "开发环境初始化就绪，正在启动命令 -> gosu $DEV_UID:$DEV_GID $*"
+echo ""
 
 exec gosu "$DEV_UID:$DEV_GID" "$@"

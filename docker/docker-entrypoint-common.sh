@@ -3,7 +3,7 @@ set -e
 
 # ============================================================
 # 白虎面板 (Baihu Panel) 容器入口公共函数库 (Entrypoint Common)
-# 参考 build-go.sh 日志样式与步骤规范
+# 规范严格参考 build-go.sh 日志样式与格式化对齐
 # ============================================================
 
 # ANSI 颜色与文本样式
@@ -37,7 +37,7 @@ log() {
 }
 
 # ============================================================
-# 1. 版本与系统信息提取
+# 1. 版本与系统信息提取与环境横幅 (Banner)
 # ============================================================
 init_panel_version() {
   PANEL_VER=$(cat /build-info/version.txt 2>/dev/null || true)
@@ -52,21 +52,29 @@ init_panel_version() {
 
   PANEL_VER="${PANEL_VER:-unknown}"
   BUILD_TIME="${BUILD_TIME:-unknown}"
-  SYS_ARCH="$(uname -m 2>/dev/null || echo 'unknown')"
-  SYS_OS="$(uname -s 2>/dev/null || echo 'Linux')"
+
+  _os="$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  _raw_arch="$(uname -m 2>/dev/null || echo 'unknown')"
+  case "$_raw_arch" in
+    x86_64)  _arch="amd64" ;;
+    aarch64) _arch="arm64" ;;
+    armv7l)  _arch="arm" ;;
+    *)       _arch="$_raw_arch" ;;
+  esac
+  SYS_ARCH="${_os:-linux}/${_arch}"
 }
 
-# 打印横幅 Banner
 show_banner() {
-  _mode_title="${1:-白虎面板 (Baihu Panel) 容器运行环境}"
+  _mode_title="${1:-标准容器运行环境}"
   init_panel_version
 
   echo "============================================================"
-  printf "          %s\n" "${_mode_title}"
+  echo "           白虎面板 (Baihu Panel) 容器运行环境"
   echo "============================================================"
+  log_info "当前运行模式 : ${_mode_title}"
   log_info "面板程序版本 : ${PANEL_VER}"
   log_info "构建时间戳   : ${BUILD_TIME}"
-  log_info "系统平台架构 : ${SYS_OS} / ${SYS_ARCH}"
+  log_info "系统平台架构 : ${SYS_ARCH}"
   echo "============================================================"
 }
 
@@ -75,6 +83,10 @@ show_banner() {
 # ============================================================
 init_directories() {
   log_step "初始化数据与脚本工作目录"
+  log_info "数据存储目录 : /app/data"
+  log_info "脚本工作目录 : /app/data/scripts"
+  log_info "配置文件目录 : /app/configs"
+
   mkdir -p \
     /app/data \
     /app/data/scripts \
@@ -84,9 +96,9 @@ init_directories() {
   if [ -d "/app/example" ]; then
     mkdir -p /app/data/scripts/example
     rsync -a --ignore-existing /app/example/ /app/data/scripts/example/ || true
-    log_success "示例脚本已同步至 /app/data/scripts/example"
+    log_success "基础工作目录准备完毕 -> /app/data (已同步示例脚本: scripts/example)"
   else
-    log_info "未检测到示例脚本目录，跳过同步"
+    log_success "基础工作目录准备完毕 -> /app/data"
   fi
 }
 
@@ -98,7 +110,9 @@ sync_mise_environment() {
   _chown_opt="${2:-}"
   _target_dir="${3:-/app/envs/mise}"
 
-  log_step "检查并同步 Mise 基础运行环境"
+  log_step "检查并同步 Mise 基础运行底座"
+  log_info "母盘底座路径 : ${_base_dir}"
+  log_info "目标运行时库 : ${_target_dir}"
   mkdir -p "$_target_dir"
 
   if [ -d "$_base_dir" ]; then
@@ -123,12 +137,12 @@ sync_mise_environment() {
       fi
       touch /tmp/.mise_container_synced
       [ -n "$_curr_ver" ] && echo "$_curr_ver" > "${_target_dir}/.installed_version"
-      log_success "Mise 基础运行环境同步完成"
+      log_success "Mise 基础运行环境同步完毕 -> ${_target_dir} (版本: ${_curr_ver:-最新})"
     else
-      log_success "Mise 基础运行环境已就绪，跳过同步"
+      log_success "Mise 基础运行环境已是最新 -> ${_target_dir} (跳过同步)"
     fi
   else
-    log_info "未检测到底座环境 (${_base_dir})，跳过同步"
+    log_info "未检测到底座母盘 (${_base_dir})，跳过同步"
   fi
 }
 
@@ -149,7 +163,11 @@ setup_runtime_env() {
   # Node 内存限制与全局脚本模块路径
   export NODE_OPTIONS="--max-old-space-size=256"
   export PYTHONPATH=/app/data/scripts:$PYTHONPATH
-  log_success "环境变量注入与 PATH 配置完成"
+
+  log_info "系统执行路径 : ${PATH%%:*} (已注入 Mise Shims)"
+  log_info "Python 镜像源: ${PIP_INDEX_URL}"
+  log_info "Node 内存限制: 256MB"
+  log_success "运行时环境与系统 PATH 注入完毕"
 }
 
 # ============================================================
@@ -157,29 +175,32 @@ setup_runtime_env() {
 # ============================================================
 verify_runtimes() {
   log_step "验证预装语言与运行时环境"
+
+  _mise_ver="未安装"
   if [ -x "$(command -v mise)" ]; then
-    log_info "  - mise   : $(mise --version 2>/dev/null | head -n 1 || echo "not found")"
-  else
-    log_info "  - mise   : not installed"
+    _mise_ver="$(mise --version 2>/dev/null | head -n 1 || echo '未检测到版本')"
   fi
 
+  _python_ver="未安装"
   if [ -x "$(command -v python)" ]; then
-    log_info "  - python : $(python --version 2>&1 | head -n 1) ($(which python 2>/dev/null || true))"
-  else
-    log_info "  - python : not installed"
+    _python_ver="$(python --version 2>&1 | head -n 1 || echo '未检测到版本')"
   fi
 
+  _node_ver="未安装"
   if [ -x "$(command -v node)" ]; then
-    log_info "  - node   : $(node --version 2>&1 | head -n 1) ($(which node 2>/dev/null || true))"
-  else
-    log_info "  - node   : not installed"
+    _node_ver="$(node --version 2>&1 | head -n 1 || echo '未检测到版本')"
   fi
 
+  _npm_ver="未安装"
   if [ -x "$(command -v npm)" ]; then
-    log_info "  - npm    : $(npm --version 2>&1 | head -n 1) ($(which npm 2>/dev/null || true))"
-  else
-    log_info "  - npm    : not installed"
+    _npm_ver="$(npm --version 2>&1 | head -n 1 || echo '未检测到版本')"
   fi
+
+  log_info "Mise 版本   : ${_mise_ver}"
+  log_info "Python 环境 : ${_python_ver}"
+  log_info "Node.js 环境: ${_node_ver}"
+  log_info "NPM 包管理器: ${_npm_ver}"
+  log_success "运行时环境核心组件自检完毕"
 }
 
 # ============================================================
@@ -191,6 +212,7 @@ setup_cli_and_completion() {
   log_step "注册全局 CLI 命令与自动补全"
   if [ -x "/app/baihu" ]; then
     ln -sf /app/baihu /usr/local/bin/baihu
+    log_info "全局命令软链 : /app/baihu -> /usr/local/bin/baihu"
   fi
 
   _rc_targets="/etc/bash.bashrc /etc/bashrc /root/.bashrc"
@@ -203,15 +225,18 @@ setup_cli_and_completion() {
       fi
     fi
   done
-  log_success "全局命令 baihu 及 Shell 补全配置就绪"
+  log_success "全局命令 baihu 及 Shell 自动补全配置完成"
 }
 
 # ============================================================
 # 7. 启动主服务
 # ============================================================
 start_baihu_server() {
-  log_step "环境初始化完成，正在启动白虎面板服务..."
-  printf "\n${C_GREEN}${C_BOLD}>>> Environment setup complete. Starting Baihu Server...${C_RESET}\n\n"
+  log_step "启动白虎面板服务"
+  log_info "工作运行目录 : /app"
+  log_info "服务主二进制 : /app/baihu"
+  log_success "容器初始化全部就绪，正在启动服务进程 -> tini -- baihu server"
+  echo ""
 
   cd /app
   # tini 作为 1 号进程回收孤儿进程，避免僵尸进程累积

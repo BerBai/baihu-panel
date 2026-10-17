@@ -105,10 +105,10 @@ WORKDIR /app
 COPY configs ./configs
 COPY example ./example
 COPY builtin/ /www/builtin
-COPY docker/docker-entrypoint.minimal.sh ./docker-entrypoint.sh
+COPY docker/docker-entrypoint-common.sh docker/docker-entrypoint.minimal.sh docker/docker-entrypoint.sh ./
 COPY docker/mise-hook.sh /etc/profile.d/mise-hook.sh
 
-RUN chmod +x docker-entrypoint.sh \
+RUN chmod +x docker-entrypoint*.sh \
     && cat /etc/profile.d/mise-hook.sh >> /etc/bash.bashrc \
     && echo "set encoding=utf-8" >> /etc/vim/vimrc \
     && ln -sf /app/baihu /usr/local/bin/baihu

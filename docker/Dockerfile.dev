@@ -39,8 +39,8 @@ ENV PATH="/app/envs/mise/shims:/app/envs/mise/bin:$PATH"
 
 ENV NPM_CONFIG_CACHE=/var/cache/npm
 
-COPY docker/docker-entrypoint-dev.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint-dev.sh
+COPY docker/docker-entrypoint-common.sh docker/docker-entrypoint-dev.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint*.sh
 
 WORKDIR /app
 

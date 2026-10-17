@@ -2,13 +2,16 @@
 set -e
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
-
 export MISE_HIDE_UPDATE_WARNING=1
 
-COLOR_PREFIX="\033[1;36m[Entrypoint]\033[0m"
-log() {
-    printf "${COLOR_PREFIX} %s\n" "$1"
-}
+# 加载公共 Entrypoint 库
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+COMMON_SH="${SCRIPT_DIR}/docker-entrypoint-common.sh"
+[ ! -f "$COMMON_SH" ] && COMMON_SH="/app/docker-entrypoint-common.sh"
+[ ! -f "$COMMON_SH" ] && COMMON_SH="/usr/local/bin/docker-entrypoint-common.sh"
+. "$COMMON_SH"
+
+show_banner "白虎面板 (Baihu Panel) 容器运行环境 (Dev Mode)"
 
 ensure_cache_ownership() {
     local dir="$1"
@@ -22,36 +25,31 @@ ensure_cache_ownership() {
     local current_uid=$(stat -c '%u' "$dir")
     local dirty_file=$(find "$dir" -mindepth 1 ! -uid "$target_uid" -print -quit 2>/dev/null)
     if [ "$current_uid" == "$target_uid" ] && [ -z "$dirty_file" ]; then
-        log "Cache hit: $dir owned by $target_uid. Reusing."
+        log_info "Cache hit: $dir owned by $target_uid. Reusing."
     else
         if [ -n "$dirty_file" ]; then
-            log "Dirty cache detected in $dir (Found root-owned files like $dirty_file)."
+            log_warn "Dirty cache detected in $dir (Found root-owned files like $dirty_file)."
         else
-            log "User changed ($current_uid -> $target_uid). Resetting cache in $dir..."
+            log_info "User changed ($current_uid -> $target_uid). Resetting cache in $dir..."
         fi
-
-        log "Nuking directory to ensure clean state..."
-
+        log_info "Nuking directory to ensure clean state..."
         find "$dir" -mindepth 1 -delete 2>/dev/null || rm -rf "$dir"/*
-
         chown "$target_uid:$target_gid" "$dir"
-        log "Cache reset complete. Ownership transferred to $target_uid."
+        log_success "Cache reset complete. Ownership transferred to $target_uid."
     fi
 }
 
-log "Initializing Development Environment..."
-
+log_step "初始化开发环境用户与目录权限"
 DEV_UID=${DEV_UID:-1000}
 DEV_GID=${DEV_GID:-1000}
-
 EXISTING_USER=$(getent passwd "$DEV_UID" | cut -d: -f1 | head -n 1)
 
 if [ -n "$EXISTING_USER" ]; then
     TARGET_USER="$EXISTING_USER"
-    log "UID $DEV_UID already exists as user '$TARGET_USER'. Using existing user."
+    log_info "UID $DEV_UID already exists as user '$TARGET_USER'. Using existing user."
 else
     TARGET_USER="devuser"
-    log "Creating user '$TARGET_USER' (UID: $DEV_UID, GID: $DEV_GID)..."
+    log_info "Creating user '$TARGET_USER' (UID: $DEV_UID, GID: $DEV_GID)..."
     groupadd -o -g "$DEV_GID" devgroup
     useradd -o -u "$DEV_UID" -g "$DEV_GID" -m -s /bin/bash "$TARGET_USER"
 fi
@@ -71,33 +69,14 @@ if [ "$DEV_UID" != "0" ]; then
     ensure_cache_ownership "/var/cache/npm" "$DEV_UID" "$DEV_GID"
     ensure_cache_ownership "/go" "$DEV_UID" "$DEV_GID"
 fi
+log_success "用户与缓存目录权限配置就绪"
 
-MISE_DIR="/app/envs/mise"
-mkdir -p "$MISE_DIR"
-log "Syncing mise environment from base..."
-rsync -a --chown="$DEV_UID:$DEV_GID" --ignore-existing /opt/mise-dev/ "$MISE_DIR" || true
-log "Mise environment synced"
+sync_mise_environment "/opt/mise-dev" "$DEV_UID:$DEV_GID"
+setup_runtime_env
+verify_runtimes
+setup_cli_and_completion "/home/$TARGET_USER/.bashrc"
 
-export MISE_DATA_DIR="$MISE_DIR"
-export MISE_CONFIG_DIR="$MISE_DIR"
-export PATH="$MISE_DIR/shims:$MISE_DIR/bin:$PATH"
-
-export PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}
-
-log "mise version: $(mise --version 2>/dev/null | head -n 1)"
-log "python: $(python --version 2>&1 | head -n 1) at $(which python)"
-log "node: $(node --version 2>&1 | head -n 1) at $(which node)"
-log "npm: $(npm --version 2>&1 | head -n 1) at $(which npm)"
-
-log "Environment ready! Starting command as user '$TARGET_USER' (UID: $DEV_UID)..."
-
-# 自动配置 Docker 容器内 bash 的 baihu 命令行补全
-for rcfile in /etc/bash.bashrc /etc/bashrc /root/.bashrc "/home/$TARGET_USER/.bashrc"; do
-  if [ -f "$rcfile" ] || [ -d "$(dirname "$rcfile")" ]; then
-    if ! grep -q "baihu completion" "$rcfile" 2>/dev/null; then
-      echo 'eval "$(baihu completion bash 2>/dev/null)"' >> "$rcfile" 2>/dev/null || true
-    fi
-  fi
-done
+log_step "环境初始化完成，准备启动命令 (用户: '$TARGET_USER', UID: $DEV_UID)..."
+printf "\n${C_GREEN}${C_BOLD}>>> Development environment ready. Starting command...${C_RESET}\n\n"
 
 exec gosu "$DEV_UID:$DEV_GID" "$@"

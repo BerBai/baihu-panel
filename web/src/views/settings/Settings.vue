@@ -9,12 +9,15 @@ import SchedulerSettings from './SchedulerSettings.vue'
 import BackupSettings from './BackupSettings.vue'
 import AboutSettings from './AboutSettings.vue'
 import WebUISettings from './WebUISettings.vue'
+import { provideSettingsTracker } from './composables/useSettingsTracker'
+import FloatingSaveBar from './components/FloatingSaveBar.vue'
 
 const activeTab = ref('security')
+provideSettingsTracker(activeTab)
 </script>
 
 <template>
-  <div class="space-y-6 max-w-5xl xl:max-w-6xl mx-auto w-full">
+  <div class="space-y-6 max-w-5xl xl:max-w-6xl mx-auto w-full relative">
     <div>
       <h2 class="text-xl sm:text-2xl font-bold tracking-tight">系统设置</h2>
       <p class="text-muted-foreground text-sm">管理系统配置和账户安全</p>
@@ -61,5 +64,8 @@ const activeTab = ref('security')
         <AboutSettings />
       </TabsContent>
     </Tabs>
+
+    <!-- 底部悬浮批量编辑样式保存栏（有变动时浮现） -->
+    <FloatingSaveBar />
   </div>
 </template>

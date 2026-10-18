@@ -11,7 +11,6 @@ import { toast } from 'vue-sonner'
 import { copyToClipboard } from '@/utils/clipboard'
 import {
   Loader2,
-  Save,
   Fingerprint,
   Globe,
   KeyRound,
@@ -30,6 +29,8 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-vue-next'
+import { useRegisterSettingSection, useFieldDiff } from './composables/useSettingsTracker'
+import ModifiedBadge from './components/ModifiedBadge.vue'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -49,6 +50,9 @@ const activeTab = ref<'oidc' | 'oauth2'>('oidc')
 // 数据库实际保存的已启用状态
 const savedOidcEnabled = ref(false)
 const savedOAuth2Enabled = ref(false)
+
+// 初始快照表单（用于变动侦测与放弃修改还原）
+const initialForm = ref<Record<string, any> | null>(null)
 
 const form = ref({
   // 1. 标准 OIDC 通道独立配置
@@ -234,12 +238,67 @@ async function loadSection() {
       oauth2_auto_create: (res.oauth2_auto_create || res.oidc_auto_create) === 'true',
       oauth2_default_role: (res.oauth2_default_role || res.oidc_default_role) === 'admin' ? 'admin' : 'user',
     }
+
+    // 记录初始快照以供变动追踪
+    initialForm.value = JSON.parse(JSON.stringify(form.value))
   } catch (e: any) {
     toast.error(e.message || '读取单点登录配置失败')
   } finally {
     loading.value = false
   }
 }
+
+// 变动项侦测与单字段追踪
+const { isDiff, getOriginal, resetField, changedFields, diffClass } = useFieldDiff(form, initialForm)
+const isDirty = computed(() => changedFields.value.length > 0)
+const dirtyCount = computed(() => changedFields.value.length)
+
+// 检测特定 Tab 内部是否有改动
+const hasOidcDiff = computed(() => {
+  return [
+    'oidc_enabled',
+    'oidc_issuer',
+    'oidc_client_id',
+    'oidc_client_secret',
+    'oidc_scopes',
+    'oidc_auto_create',
+    'oidc_default_role'
+  ].some(k => isDiff(k))
+})
+
+const hasOAuth2Diff = computed(() => {
+  return [
+    'oauth2_enabled',
+    'oauth2_name',
+    'oauth2_auth_url',
+    'oauth2_token_url',
+    'oauth2_userinfo_url',
+    'oauth2_user_key',
+    'oauth2_client_id',
+    'oauth2_client_secret',
+    'oauth2_scopes',
+    'oauth2_auto_create',
+    'oauth2_default_role'
+  ].some(k => isDiff(k))
+})
+
+function resetForm() {
+  if (!initialForm.value) return
+  form.value = JSON.parse(JSON.stringify(initialForm.value))
+  toast.info('已还原单点登录配置')
+}
+
+// 注册至全局设置变动追踪器
+useRegisterSettingSection({
+  id: 'oidc',
+  tab: 'security',
+  title: '单点登录 SSO',
+  isDirty,
+  dirtyCount,
+  saving,
+  save,
+  reset: resetForm
+})
 
 async function save() {
   if (demoMode.value) {
@@ -510,18 +569,18 @@ onMounted(() => {
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span
-                v-if="savedOidcEnabled"
+                v-if="hasOidcDiff"
+                class="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>待保存</span>
+              </span>
+              <span
+                v-else-if="savedOidcEnabled"
                 class="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-normal"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>在线</span>
-              </span>
-              <span
-                v-else-if="form.oidc_enabled"
-                class="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal"
-              >
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                <span>待保存</span>
               </span>
               <span v-else class="text-[10px] text-muted-foreground/70">未开启</span>
             </div>
@@ -540,18 +599,18 @@ onMounted(() => {
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
               <span
-                v-if="savedOAuth2Enabled"
+                v-if="hasOAuth2Diff"
+                class="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20"
+              >
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>待保存</span>
+              </span>
+              <span
+                v-else-if="savedOAuth2Enabled"
                 class="inline-flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-normal"
               >
                 <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 <span>在线</span>
-              </span>
-              <span
-                v-else-if="form.oauth2_enabled"
-                class="inline-flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-normal"
-              >
-                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                <span>待保存</span>
               </span>
               <span v-else class="text-[10px] text-muted-foreground/70">未开启</span>
             </div>
@@ -562,7 +621,7 @@ onMounted(() => {
         <div v-if="activeTab === 'oidc'" class="space-y-3.5 animate-in fade-in duration-200">
           <!-- 通道主开关与在线指示条 -->
           <div
-            class="p-3 sm:p-3.5 rounded-xl border flex items-center justify-between transition-all gap-2"
+            class="p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between transition-all gap-2.5 sm:gap-3"
             :class="savedOidcEnabled ? 'border-emerald-500/20 bg-emerald-500/5' : (form.oidc_enabled ? 'border-amber-500/30 bg-amber-500/5' : 'border-border/70 bg-muted/20')"
           >
             <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -589,17 +648,37 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- 通道独立启用开关 -->
-            <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
-              <Switch
-                :model-value="form.oidc_enabled"
-                @update:model-value="(val) => (form.oidc_enabled = val)"
-                id="oidc-channel-enabled"
-                :disabled="demoMode || loading"
-              />
-              <Label for="oidc-channel-enabled" class="text-xs cursor-pointer select-none">
-                {{ form.oidc_enabled ? '已开启' : '开启' }}
-              </Label>
+            <!-- 通道操作区：测试按钮与独立启用开关 -->
+            <div class="flex items-center gap-2 sm:gap-2.5 shrink-0 justify-between sm:justify-end w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                @click="handleTestOidc"
+                :disabled="testingOidc || saving || loading || demoMode"
+                class="h-8 px-2.5 sm:px-3 text-xs font-medium shadow-xs gap-1.5 bg-background/80 hover:bg-background shrink-0"
+              >
+                <Loader2 v-if="testingOidc" class="h-3.5 w-3.5 animate-spin" />
+                <Globe v-else class="h-3.5 w-3.5 text-sky-500" />
+                <span>{{ testingOidc ? '测试中...' : '测试 OIDC 发现文档' }}</span>
+              </Button>
+
+              <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
+                <ModifiedBadge
+                  v-if="isDiff('oidc_enabled')"
+                  :original-value="getOriginal('oidc_enabled')"
+                  @reset="resetField('oidc_enabled')"
+                />
+                <Switch
+                  :model-value="form.oidc_enabled"
+                  @update:model-value="(val) => (form.oidc_enabled = val)"
+                  id="oidc-channel-enabled"
+                  :disabled="demoMode || loading"
+                />
+                <Label for="oidc-channel-enabled" class="text-xs cursor-pointer select-none">
+                  {{ form.oidc_enabled ? '已开启' : '开启' }}
+                </Label>
+              </div>
             </div>
           </div>
 
@@ -639,6 +718,11 @@ onMounted(() => {
                 <Globe class="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                 <span>Issuer（提供方根地址）</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oidc_issuer')"
+                  :original-value="getOriginal('oidc_issuer')"
+                  @reset="resetField('oidc_issuer')"
+                />
               </Label>
               <a
                 v-if="discoveryUrl"
@@ -655,6 +739,7 @@ onMounted(() => {
               v-model="form.oidc_issuer"
               placeholder="https://id.example.com"
               class="h-9 text-xs font-mono"
+              :class="diffClass('oidc_issuer')"
               :disabled="demoMode || loading"
               @blur="cleanOidcIssuer"
             />
@@ -667,29 +752,41 @@ onMounted(() => {
           <!-- OIDC 客户端凭据 -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5 flex-wrap">
                 <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
                 <span>Client ID（OIDC 客户端标识）</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oidc_client_id')"
+                  :original-value="getOriginal('oidc_client_id')"
+                  @reset="resetField('oidc_client_id')"
+                />
               </Label>
               <Input
                 v-model="form.oidc_client_id"
                 placeholder="例如 Pocket ID 或 Keycloak Client ID"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oidc_client_id')"
                 :disabled="demoMode || loading"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5 flex-wrap">
                 <Lock class="w-3.5 h-3.5 text-muted-foreground" />
                 <span>Client Secret（OIDC 客户端密钥）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oidc_client_secret')"
+                  :show-reset="true"
+                  @reset="resetField('oidc_client_secret')"
+                />
               </Label>
               <div class="relative">
                 <Input
                   v-model="form.oidc_client_secret"
                   :type="showSecretOidc ? 'text' : 'password'"
                   class="h-9 pr-8 text-xs font-mono"
+                  :class="diffClass('oidc_client_secret')"
                   :disabled="demoMode || loading"
                   placeholder="留空保持不变"
                 />
@@ -712,6 +809,11 @@ onMounted(() => {
               <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
                 <span>授权范围 (Scope)</span>
                 <span class="text-[10px] text-muted-foreground font-normal">（默认已包含 openid profile email）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oidc_scopes')"
+                  :original-value="getOriginal('oidc_scopes')"
+                  @reset="resetField('oidc_scopes')"
+                />
               </Label>
               <div class="flex items-center gap-1 flex-wrap">
                 <button
@@ -730,6 +832,7 @@ onMounted(() => {
               v-model="form.oidc_scopes"
               placeholder="例如 groups 或 roles，按需追加"
               class="h-9 text-xs font-mono"
+              :class="diffClass('oidc_scopes')"
               :disabled="demoMode || loading"
             />
           </div>
@@ -743,13 +846,25 @@ onMounted(() => {
                 :disabled="demoMode || loading"
               />
               <div>
-                <Label for="oidc-auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
+                <div class="flex items-center gap-1.5">
+                  <Label for="oidc-auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
+                  <ModifiedBadge
+                    v-if="isDiff('oidc_auto_create')"
+                    :original-value="getOriginal('oidc_auto_create')"
+                    @reset="resetField('oidc_auto_create')"
+                  />
+                </div>
                 <p class="text-[10px] text-muted-foreground">未关联本地账号的 OIDC 身份首次登录时自动开通</p>
               </div>
             </div>
 
             <div v-if="form.oidc_auto_create" class="flex items-center justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t border-border/40 sm:border-0">
               <span class="text-[11px] text-muted-foreground shrink-0">分配角色:</span>
+              <ModifiedBadge
+                v-if="isDiff('oidc_default_role')"
+                :original-value="getOriginal('oidc_default_role')"
+                @reset="resetField('oidc_default_role')"
+              />
               <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
                 <button
                   type="button"
@@ -773,28 +888,14 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- OIDC 单独测试按钮 -->
-          <div class="flex justify-end pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              @click="handleTestOidc"
-              :disabled="testingOidc || saving || loading || demoMode"
-              class="h-8.5 px-3.5 text-xs font-medium shadow-xs gap-1.5 w-full sm:w-auto justify-center"
-            >
-              <Loader2 v-if="testingOidc" class="h-3.5 w-3.5 animate-spin" />
-              <Globe v-else class="h-3.5 w-3.5 text-sky-500" />
-              <span>{{ testingOidc ? '测试中...' : '测试 OIDC 发现文档' }}</span>
-            </Button>
-          </div>
+
         </div>
 
         <!-- ==================== 2. 通用 OAuth 2.0 通道专属面板 ==================== -->
         <div v-else class="space-y-3.5 animate-in fade-in duration-200">
           <!-- 通道主开关与在线指示条 -->
           <div
-            class="p-3 sm:p-3.5 rounded-xl border flex items-center justify-between transition-all gap-2"
+            class="p-3 sm:p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between transition-all gap-2.5 sm:gap-3"
             :class="savedOAuth2Enabled ? 'border-emerald-500/20 bg-emerald-500/5' : (form.oauth2_enabled ? 'border-amber-500/30 bg-amber-500/5' : 'border-border/70 bg-muted/20')"
           >
             <div class="flex items-center gap-2.5 sm:gap-3 min-w-0">
@@ -821,17 +922,37 @@ onMounted(() => {
               </div>
             </div>
 
-            <!-- 通道独立启用开关 -->
-            <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
-              <Switch
-                :model-value="form.oauth2_enabled"
-                @update:model-value="(val) => (form.oauth2_enabled = val)"
-                id="oauth2-channel-enabled"
-                :disabled="demoMode || loading"
-              />
-              <Label for="oauth2-channel-enabled" class="text-xs cursor-pointer select-none">
-                {{ form.oauth2_enabled ? '已开启' : '开启' }}
-              </Label>
+            <!-- 通道操作区：测试按钮与独立启用开关 -->
+            <div class="flex items-center gap-2 sm:gap-2.5 shrink-0 justify-between sm:justify-end w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                @click="handleTestOAuth2"
+                :disabled="testingOAuth2 || saving || loading || demoMode"
+                class="h-8 px-2.5 sm:px-3 text-xs font-medium shadow-xs gap-1.5 bg-background/80 hover:bg-background shrink-0"
+              >
+                <Loader2 v-if="testingOAuth2" class="h-3.5 w-3.5 animate-spin" />
+                <Zap v-else class="h-3.5 w-3.5 text-amber-500" />
+                <span>{{ testingOAuth2 ? '测试中...' : '测试 OAuth 2.0 平台端点' }}</span>
+              </Button>
+
+              <div class="flex items-center gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 border-l border-border/60 shrink-0">
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_enabled')"
+                  :original-value="getOriginal('oauth2_enabled')"
+                  @reset="resetField('oauth2_enabled')"
+                />
+                <Switch
+                  :model-value="form.oauth2_enabled"
+                  @update:model-value="(val) => (form.oauth2_enabled = val)"
+                  id="oauth2-channel-enabled"
+                  :disabled="demoMode || loading"
+                />
+                <Label for="oauth2-channel-enabled" class="text-xs cursor-pointer select-none">
+                  {{ form.oauth2_enabled ? '已开启' : '开启' }}
+                </Label>
+              </div>
             </div>
           </div>
 
@@ -887,40 +1008,58 @@ onMounted(() => {
           <!-- 端点三列并排 -->
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
                 <span>授权端点 (Authorize URL)</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_auth_url')"
+                  :original-value="getOriginal('oauth2_auth_url')"
+                  @reset="resetField('oauth2_auth_url')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_auth_url"
                 placeholder="https://github.com/login/oauth/authorize"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oauth2_auth_url')"
                 :disabled="demoMode || loading"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
                 <span>令牌端点 (Token URL)</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_token_url')"
+                  :original-value="getOriginal('oauth2_token_url')"
+                  @reset="resetField('oauth2_token_url')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_token_url"
                 placeholder="https://github.com/login/oauth/access_token"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oauth2_token_url')"
                 :disabled="demoMode || loading"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
                 <span>用户信息端点 (Userinfo URL)</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_userinfo_url')"
+                  :original-value="getOriginal('oauth2_userinfo_url')"
+                  @reset="resetField('oauth2_userinfo_url')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_userinfo_url"
                 placeholder="https://api.github.com/user"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oauth2_userinfo_url')"
                 :disabled="demoMode || loading"
               />
             </div>
@@ -929,25 +1068,39 @@ onMounted(() => {
           <!-- 显示名称与唯一用户标识 Key 双列并排 -->
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">
-                显示名称 <span class="text-[10px] text-muted-foreground font-normal">（登录页按钮回显，如 GitHub / Gitee）</span>
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
+                <span>显示名称</span>
+                <span class="text-[10px] text-muted-foreground font-normal">（登录页按钮回显，如 GitHub / Gitee）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_name')"
+                  :original-value="getOriginal('oauth2_name')"
+                  @reset="resetField('oauth2_name')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_name"
                 placeholder="例如 GitHub 或 Gitee"
                 class="h-9 text-xs"
+                :class="diffClass('oauth2_name')"
                 :disabled="demoMode || loading"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">
-                唯一用户标识 Key <span class="text-[10px] text-muted-foreground font-normal">（留空智能提取）</span>
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
+                <span>唯一用户标识 Key</span>
+                <span class="text-[10px] text-muted-foreground font-normal">（留空智能提取）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_user_key')"
+                  :original-value="getOriginal('oauth2_user_key')"
+                  @reset="resetField('oauth2_user_key')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_user_key"
                 placeholder="例如 id 或 sub"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oauth2_user_key')"
                 :disabled="demoMode || loading"
               />
             </div>
@@ -956,29 +1109,41 @@ onMounted(() => {
           <!-- OAuth 2.0 独立客户端凭据 -->
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5 flex-wrap">
                 <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
                 <span>Client ID（OAuth 2.0 客户端标识）</span>
                 <span class="text-destructive">*</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_client_id')"
+                  :original-value="getOriginal('oauth2_client_id')"
+                  @reset="resetField('oauth2_client_id')"
+                />
               </Label>
               <Input
                 v-model="form.oauth2_client_id"
                 placeholder="例如 GitHub OAuth App Client ID"
                 class="h-9 text-xs font-mono"
+                :class="diffClass('oauth2_client_id')"
                 :disabled="demoMode || loading"
               />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5">
+              <Label class="text-xs font-medium text-foreground flex items-center gap-1.5 flex-wrap">
                 <Lock class="w-3.5 h-3.5 text-muted-foreground" />
                 <span>Client Secret（OAuth 2.0 客户端密钥）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_client_secret')"
+                  :show-reset="true"
+                  @reset="resetField('oauth2_client_secret')"
+                />
               </Label>
               <div class="relative">
                 <Input
                   v-model="form.oauth2_client_secret"
                   :type="showSecretOAuth2 ? 'text' : 'password'"
                   class="h-9 pr-8 text-xs font-mono"
+                  :class="diffClass('oauth2_client_secret')"
                   :disabled="demoMode || loading"
                   placeholder="留空保持不变"
                 />
@@ -1001,6 +1166,11 @@ onMounted(() => {
               <Label class="text-xs font-medium text-foreground flex items-center gap-1 flex-wrap">
                 <span>授权范围 (Scope)</span>
                 <span class="text-[10px] text-muted-foreground font-normal">（以空格或逗号分隔）</span>
+                <ModifiedBadge
+                  v-if="isDiff('oauth2_scopes')"
+                  :original-value="getOriginal('oauth2_scopes')"
+                  @reset="resetField('oauth2_scopes')"
+                />
               </Label>
               <div class="flex items-center gap-1 flex-wrap">
                 <button
@@ -1019,6 +1189,7 @@ onMounted(() => {
               v-model="form.oauth2_scopes"
               placeholder="例如 read:user user:email"
               class="h-9 text-xs font-mono"
+              :class="diffClass('oauth2_scopes')"
               :disabled="demoMode || loading"
             />
           </div>
@@ -1032,13 +1203,25 @@ onMounted(() => {
                 :disabled="demoMode || loading"
               />
               <div>
-                <Label for="oauth2-auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
+                <div class="flex items-center gap-1.5">
+                  <Label for="oauth2-auto-create" class="text-xs font-medium cursor-pointer select-none">首次登录自动建号</Label>
+                  <ModifiedBadge
+                    v-if="isDiff('oauth2_auto_create')"
+                    :original-value="getOriginal('oauth2_auto_create')"
+                    @reset="resetField('oauth2_auto_create')"
+                  />
+                </div>
                 <p class="text-[10px] text-muted-foreground">未关联本地账号的第三方身份首次登录时自动开通</p>
               </div>
             </div>
 
             <div v-if="form.oauth2_auto_create" class="flex items-center justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t border-border/40 sm:border-0">
               <span class="text-[11px] text-muted-foreground shrink-0">分配角色:</span>
+              <ModifiedBadge
+                v-if="isDiff('oauth2_default_role')"
+                :original-value="getOriginal('oauth2_default_role')"
+                @reset="resetField('oauth2_default_role')"
+              />
               <div class="inline-flex rounded-lg border bg-background p-0.5 text-xs shadow-xs">
                 <button
                   type="button"
@@ -1062,37 +1245,12 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- OAuth 2.0 单独测试按钮 -->
-          <div class="flex justify-end pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              @click="handleTestOAuth2"
-              :disabled="testingOAuth2 || saving || loading || demoMode"
-              class="h-8.5 px-3.5 text-xs font-medium shadow-xs gap-1.5 w-full sm:w-auto justify-center"
-            >
-              <Loader2 v-if="testingOAuth2" class="h-3.5 w-3.5 animate-spin" />
-              <Zap v-else class="h-3.5 w-3.5 text-amber-500" />
-              <span>{{ testingOAuth2 ? '测试中...' : '测试 OAuth 2.0 平台端点' }}</span>
-            </Button>
-          </div>
+
         </div>
 
-        <!-- 全局统一底部保存栏 -->
-        <div class="pt-4 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-2">
-          <span class="text-[11px] text-muted-foreground">
-            多身份源支持同时启用；保存后将在登录页面即时聚合展示对应的登录按钮。
-          </span>
-          <Button
-            @click="save"
-            :disabled="saving || testingOidc || testingOAuth2 || loading || demoMode"
-            class="h-9 px-4 text-xs font-medium shadow-sm gap-1.5 w-full sm:w-auto"
-          >
-            <Loader2 v-if="saving" class="h-3.5 w-3.5 animate-spin" />
-            <Save v-else class="h-3.5 w-3.5" />
-            <span>保存单点登录配置</span>
-          </Button>
+        <!-- 底部提示文字 -->
+        <div class="pt-3 border-t border-border/50 text-[11px] text-muted-foreground mt-2">
+          多身份源支持同时启用；保存后将在登录页面即时聚合展示对应的登录按钮。
         </div>
       </div>
     </CardContent>

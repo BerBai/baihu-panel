@@ -35,7 +35,6 @@ const demoMode = ref(false)
 const showNewPwd = ref(false)
 const showConfirmPwd = ref(false)
 
-// 校验弹窗状态
 const showVerifyDialog = ref(false)
 const verifyOldUsername = ref('')
 const verifyOldPassword = ref('')

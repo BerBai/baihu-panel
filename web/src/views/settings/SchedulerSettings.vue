@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Button } from '@/components/ui/button'
 import { useSiteSettings } from '@/composables/useSiteSettings'
 import {
   AlertDialog,
@@ -26,10 +25,11 @@ import {
   Sliders,
   Workflow,
   Sparkles,
-  Zap,
   CheckCircle2,
   AlertTriangle
 } from 'lucide-vue-next'
+import { useRegisterSettingSection, useFieldDiff } from './composables/useSettingsTracker'
+import ModifiedBadge from './components/ModifiedBadge.vue'
 
 interface SchedulerSettings {
   worker_count: string
@@ -42,6 +42,7 @@ const form = ref<SchedulerSettings>({
   queue_size: '100',
   rate_interval: '200'
 })
+const initialForm = ref<SchedulerSettings | null>(null)
 const loading = ref(false)
 const showConfirm = ref(false)
 const { siteSettings } = useSiteSettings()
@@ -54,8 +55,32 @@ async function loadSettings() {
   try {
     const res = await api.settings.getScheduler()
     form.value = res
+    initialForm.value = JSON.parse(JSON.stringify(form.value))
   } catch {}
 }
+
+// 变动项侦测与单字段追踪
+const { isDiff, getOriginal, resetField, changedFields, diffClass } = useFieldDiff(form, initialForm)
+const isDirty = computed(() => changedFields.value.length > 0)
+const dirtyCount = computed(() => changedFields.value.length)
+
+function resetForm() {
+  if (!initialForm.value) return
+  form.value = JSON.parse(JSON.stringify(initialForm.value))
+  toast.info('已还原调度引擎参数')
+}
+
+// 注册至全局设置变动追踪器
+useRegisterSettingSection({
+  id: 'scheduler',
+  tab: 'scheduler',
+  title: '调度引擎参数',
+  isDirty,
+  dirtyCount,
+  saving: loading,
+  save: confirmSave,
+  reset: resetForm
+})
 
 function confirmSave() {
   if (isDemoMode.value) {
@@ -85,6 +110,7 @@ async function saveSettings() {
       queue_size: String(form.value.queue_size),
       rate_interval: String(form.value.rate_interval)
     })
+    initialForm.value = JSON.parse(JSON.stringify(form.value))
     toast.success('调度参数保存成功，引擎已热重载')
   } catch {
     toast.error('保存调度设置失败')
@@ -143,11 +169,19 @@ onMounted(loadSettings)
             <!-- 参数 1 & 2：并发 Worker 与 队列深度 -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               <!-- 并发限制数 -->
-              <div class="p-3.5 rounded-xl border border-border/70 bg-muted/20 space-y-2">
+              <div
+                class="p-3.5 rounded-xl border transition-all space-y-2"
+                :class="isDiff('worker_count') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'border-border/70 bg-muted/20'"
+              >
                 <div class="flex items-center justify-between">
-                  <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
                     <Cpu class="w-3.5 h-3.5 text-primary" />
                     <span>并发池容量 (Workers)</span>
+                    <ModifiedBadge
+                      v-if="isDiff('worker_count')"
+                      :original-value="getOriginal('worker_count')"
+                      @reset="resetField('worker_count')"
+                    />
                   </Label>
                 </div>
                 <div class="relative">
@@ -157,6 +191,7 @@ onMounted(loadSettings)
                     :min="1"
                     :disabled="isDemoMode"
                     class="h-9 text-xs font-bold font-inter pr-12 no-spin"
+                    :class="diffClass('worker_count')"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
                     进程
@@ -168,11 +203,19 @@ onMounted(loadSettings)
               </div>
 
               <!-- 最大队列数 -->
-              <div class="p-3.5 rounded-xl border border-border/70 bg-muted/20 space-y-2">
+              <div
+                class="p-3.5 rounded-xl border transition-all space-y-2"
+                :class="isDiff('queue_size') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'border-border/70 bg-muted/20'"
+              >
                 <div class="flex items-center justify-between">
-                  <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                  <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
                     <Layers class="w-3.5 h-3.5 text-blue-500" />
                     <span>缓冲队列 (Queue Size)</span>
+                    <ModifiedBadge
+                      v-if="isDiff('queue_size')"
+                      :original-value="getOriginal('queue_size')"
+                      @reset="resetField('queue_size')"
+                    />
                   </Label>
                 </div>
                 <div class="relative">
@@ -182,6 +225,7 @@ onMounted(loadSettings)
                     :min="1"
                     :disabled="isDemoMode"
                     class="h-9 text-xs font-bold font-inter pr-14 no-spin"
+                    :class="diffClass('queue_size')"
                   />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
                     个任务
@@ -194,11 +238,19 @@ onMounted(loadSettings)
             </div>
 
             <!-- 参数 3：频控防抖间隔 -->
-            <div class="p-3.5 rounded-xl border border-border/70 bg-muted/20 space-y-2">
+            <div
+              class="p-3.5 rounded-xl border transition-all space-y-2"
+              :class="isDiff('rate_interval') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'border-border/70 bg-muted/20'"
+            >
               <div class="flex items-center justify-between">
-                <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Label class="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
                   <Activity class="w-3.5 h-3.5 text-emerald-500" />
                   <span>调度频控间隔 (Rate Interval)</span>
+                  <ModifiedBadge
+                    v-if="isDiff('rate_interval')"
+                    :original-value="getOriginal('rate_interval')"
+                    @reset="resetField('rate_interval')"
+                  />
                 </Label>
                 <span class="text-[10px] text-muted-foreground">防瞬间 CPU/IO 尖刺</span>
               </div>
@@ -209,6 +261,7 @@ onMounted(loadSettings)
                   :min="0"
                   :disabled="isDemoMode"
                   class="h-9 text-xs font-bold font-inter pr-12 no-spin"
+                  :class="diffClass('rate_interval')"
                 />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground pointer-events-none">
                   ms
@@ -229,19 +282,9 @@ onMounted(loadSettings)
             </div>
           </div>
 
-          <!-- 底部保存按钮栏 -->
-          <div class="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-1">
-            <span class="text-[11px] text-muted-foreground">
-              保存后即刻热重载生效，运行中的任务不受影响
-            </span>
-            <Button
-              @click="confirmSave"
-              :disabled="loading || isDemoMode"
-              class="h-8.5 px-4 text-xs font-medium shadow-sm gap-1.5"
-            >
-              <Zap class="w-3.5 h-3.5" />
-              <span>{{ loading ? '应用配置中...' : '保存调度配置' }}</span>
-            </Button>
+          <!-- 底部说明栏 -->
+          <div class="pt-2.5 border-t border-border/50 text-[11px] text-muted-foreground mt-1">
+            保存后即刻热重载生效，运行中的任务不受影响
           </div>
         </CardContent>
       </Card>

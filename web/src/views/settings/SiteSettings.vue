@@ -24,7 +24,6 @@ import {
   Send,
   ShieldCheck,
   CalendarClock,
-  Save,
   Sparkles,
   Cpu,
   KeyRound
@@ -39,6 +38,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { useRegisterSettingSection, useFieldDiff } from './composables/useSettingsTracker'
+import ModifiedBadge from './components/ModifiedBadge.vue'
 
 const { refreshSettings, siteSettings } = useSiteSettings()
 
@@ -48,6 +49,8 @@ const isDemoMode = computed(() => {
     siteSettings.value?.demo_mode === 'true' ||
     (siteSettings.value as any)?.demo_mode === true
 })
+
+const initialForm = ref<SiteSettings | null>(null)
 
 const form = ref<SiteSettings>({
   title: '',
@@ -107,8 +110,32 @@ async function loadSettings() {
       openapi_enabled: res.openapi_enabled === true || (res as any).openapi_enabled === 'true',
       demo_mode: res.demo_mode
     }
+    initialForm.value = JSON.parse(JSON.stringify(form.value))
   } catch { }
 }
+
+// 变动项比对与单字段追踪
+const { isDiff, getOriginal, resetField, changedFields, diffClass } = useFieldDiff(form, initialForm)
+const isDirty = computed(() => changedFields.value.length > 0)
+const dirtyCount = computed(() => changedFields.value.length)
+
+function resetForm() {
+  if (!initialForm.value) return
+  form.value = JSON.parse(JSON.stringify(initialForm.value))
+  toast.info('已还原站点配置')
+}
+
+// 注册至全局设置变动追踪器
+useRegisterSettingSection({
+  id: 'site',
+  tab: 'site',
+  title: '站点与系统配置',
+  isDirty,
+  dirtyCount,
+  saving: loading,
+  save: saveSettings,
+  reset: resetForm
+})
 
 async function saveSettings() {
   loading.value = true
@@ -283,19 +310,40 @@ onMounted(loadSettings)
           </CardHeader>
           <CardContent class="space-y-4 px-4 sm:px-6">
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">站点标题</Label>
-              <Input v-model="form.title" placeholder="白虎面板" class="h-9" />
+              <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                <span>站点标题</span>
+                <ModifiedBadge
+                  v-if="isDiff('title')"
+                  :original-value="getOriginal('title')"
+                  @reset="resetField('title')"
+                />
+              </Label>
+              <Input v-model="form.title" placeholder="白虎面板" class="h-9" :class="diffClass('title')" />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">站点标语</Label>
-              <Input v-model="form.subtitle" placeholder="轻量级定时任务管理系统" class="h-9" />
+              <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                <span>站点标语</span>
+                <ModifiedBadge
+                  v-if="isDiff('subtitle')"
+                  :original-value="getOriginal('subtitle')"
+                  @reset="resetField('subtitle')"
+                />
+              </Label>
+              <Input v-model="form.subtitle" placeholder="轻量级定时任务管理系统" class="h-9" :class="diffClass('subtitle')" />
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">站点图标 (SVG 代码)</Label>
+              <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                <span>站点图标 (SVG 代码)</span>
+                <ModifiedBadge
+                  v-if="isDiff('icon')"
+                  :original-value="getOriginal('icon')"
+                  @reset="resetField('icon')"
+                />
+              </Label>
               <div class="flex items-center gap-2">
-                <Input v-model="form.icon" placeholder="<svg>...</svg>" class="flex-1 font-mono text-xs h-9" />
+                <Input v-model="form.icon" placeholder="<svg>...</svg>" class="flex-1 font-mono text-xs h-9" :class="diffClass('icon')" />
                 <div
                   v-if="iconPreview"
                   class="p-1.5 border rounded-lg bg-card w-9 h-9 flex items-center justify-center shrink-0 [&>svg]:w-5 [&>svg]:h-5 shadow-sm"
@@ -305,12 +353,20 @@ onMounted(loadSettings)
             </div>
 
             <div class="space-y-1.5">
-              <Label class="text-xs font-medium text-foreground">会话保持天数 (Cookie 过期时间)</Label>
+              <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                <span>会话保持天数 (Cookie 过期时间)</span>
+                <ModifiedBadge
+                  v-if="isDiff('cookie_days')"
+                  :original-value="getOriginal('cookie_days')"
+                  @reset="resetField('cookie_days')"
+                />
+              </Label>
               <div class="relative">
                 <Input
                   v-model="form.cookie_days"
                   type="number"
                   class="h-9 pr-14 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  :class="diffClass('cookie_days')"
                 />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">天过期</span>
               </div>
@@ -344,6 +400,11 @@ onMounted(loadSettings)
                 </CardDescription>
               </div>
               <div class="flex items-center gap-2 shrink-0 pt-0.5">
+                <ModifiedBadge
+                  v-if="isDiff('openapi_enabled')"
+                  :original-value="getOriginal('openapi_enabled')"
+                  @reset="resetField('openapi_enabled')"
+                />
                 <Switch v-model="form.openapi_enabled" id="openapi-enabled" :disabled="isDemoMode" />
                 <Label for="openapi-enabled" class="text-xs cursor-pointer select-none">
                   {{ form.openapi_enabled ? '已开启' : '开启' }}
@@ -385,19 +446,27 @@ onMounted(loadSettings)
                     <KeyRound class="w-3.5 h-3.5 text-muted-foreground" />
                     <span>Token 访问密钥</span>
                   </Label>
-                  <span v-if="form.openapi_token" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    <span>已生成凭据</span>
-                  </span>
-                  <span v-else class="text-[10px] text-amber-500">
-                    未生成凭据
-                  </span>
+                  <div class="flex items-center gap-2">
+                    <ModifiedBadge
+                      v-if="isDiff('openapi_token')"
+                      :original-value="getOriginal('openapi_token')"
+                      @reset="resetField('openapi_token')"
+                    />
+                    <span v-if="form.openapi_token" class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      <span>已生成凭据</span>
+                    </span>
+                    <span v-else class="text-[10px] text-amber-500">
+                      未生成凭据
+                    </span>
+                  </div>
                 </div>
                 <div class="flex items-center space-x-2">
                   <Input
                     v-model="form.openapi_token"
                     placeholder="点击右侧按钮生成 32 位 Token"
                     class="text-xs sm:text-sm h-9 font-mono flex-1 min-w-0"
+                    :class="diffClass('openapi_token')"
                     :disabled="isDemoMode || !form.openapi_enabled"
                   />
                   <Button
@@ -431,12 +500,20 @@ onMounted(loadSettings)
                     <Clock class="w-3.5 h-3.5 text-muted-foreground" />
                     <span>截止有效期</span>
                   </Label>
-                  <span class="text-[10px] text-muted-foreground">置空代表永不过期</span>
+                  <div class="flex items-center gap-2">
+                    <ModifiedBadge
+                      v-if="isDiff('openapi_token_expire')"
+                      :original-value="getOriginal('openapi_token_expire')"
+                      @reset="resetField('openapi_token_expire')"
+                    />
+                    <span class="text-[10px] text-muted-foreground">置空代表永不过期</span>
+                  </div>
                 </div>
                 <Input
                   v-model="form.openapi_token_expire"
                   type="date"
                   class="w-full dark:[color-scheme:dark] h-9 text-xs sm:text-sm"
+                  :class="diffClass('openapi_token_expire')"
                   :disabled="isDemoMode || !form.openapi_enabled"
                 />
               </div>
@@ -588,13 +665,22 @@ onMounted(loadSettings)
             <!-- 4 大日志清理条目（响应式单列/双行适配，小屏下自动折行不挤压） -->
             <div class="space-y-2.5">
               <!-- 系统通知 -->
-              <div class="p-3 rounded-xl border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div
+                class="p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                :class="isDiff('system_notice_days') || isDiff('system_notice_max_count') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'bg-muted/20 border-border/70'"
+              >
                 <div class="flex items-center gap-2.5 min-w-0">
                   <div class="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
                     <Bell class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-foreground truncate">系统通知清理</div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-foreground truncate">系统通知清理</span>
+                      <ModifiedBadge
+                        v-if="isDiff('system_notice_days') || isDiff('system_notice_max_count')"
+                        :show-reset="false"
+                      />
+                    </div>
                     <div class="text-[10px] text-muted-foreground truncate">站内消息通知及系统公告</div>
                   </div>
                 </div>
@@ -604,6 +690,7 @@ onMounted(loadSettings)
                       v-model="form.system_notice_days"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('system_notice_days')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">天</span>
@@ -613,6 +700,7 @@ onMounted(loadSettings)
                       v-model="form.system_notice_max_count"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('system_notice_max_count')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">条</span>
@@ -621,13 +709,22 @@ onMounted(loadSettings)
               </div>
 
               <!-- 推送日志 -->
-              <div class="p-3 rounded-xl border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div
+                class="p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                :class="isDiff('push_log_days') || isDiff('push_log_max_count') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'bg-muted/20 border-border/70'"
+              >
                 <div class="flex items-center gap-2.5 min-w-0">
                   <div class="p-1.5 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 shrink-0">
                     <Send class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-foreground truncate">推送日志清理</div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-foreground truncate">推送日志清理</span>
+                      <ModifiedBadge
+                        v-if="isDiff('push_log_days') || isDiff('push_log_max_count')"
+                        :show-reset="false"
+                      />
+                    </div>
                     <div class="text-[10px] text-muted-foreground truncate">通道消息分发与推送结果</div>
                   </div>
                 </div>
@@ -637,6 +734,7 @@ onMounted(loadSettings)
                       v-model="form.push_log_days"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('push_log_days')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">天</span>
@@ -646,6 +744,7 @@ onMounted(loadSettings)
                       v-model="form.push_log_max_count"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('push_log_max_count')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">条</span>
@@ -654,13 +753,22 @@ onMounted(loadSettings)
               </div>
 
               <!-- 登录日志 -->
-              <div class="p-3 rounded-xl border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div
+                class="p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                :class="isDiff('login_log_days') || isDiff('login_log_max_count') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'bg-muted/20 border-border/70'"
+              >
                 <div class="flex items-center gap-2.5 min-w-0">
                   <div class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 shrink-0">
                     <ShieldCheck class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-foreground truncate">登录日志清理</div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-foreground truncate">登录日志清理</span>
+                      <ModifiedBadge
+                        v-if="isDiff('login_log_days') || isDiff('login_log_max_count')"
+                        :show-reset="false"
+                      />
+                    </div>
                     <div class="text-[10px] text-muted-foreground truncate">用户登录认证与安全审计</div>
                   </div>
                 </div>
@@ -670,6 +778,7 @@ onMounted(loadSettings)
                       v-model="form.login_log_days"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('login_log_days')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">天</span>
@@ -679,6 +788,7 @@ onMounted(loadSettings)
                       v-model="form.login_log_max_count"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('login_log_max_count')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">条</span>
@@ -687,13 +797,22 @@ onMounted(loadSettings)
               </div>
 
               <!-- 调度日志 -->
-              <div class="p-3 rounded-xl border bg-muted/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div
+                class="p-3 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                :class="isDiff('scheduler_log_days') || isDiff('scheduler_log_max_count') ? 'border-amber-500/40 bg-amber-500/[0.04]' : 'bg-muted/20 border-border/70'"
+              >
                 <div class="flex items-center gap-2.5 min-w-0">
                   <div class="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
                     <CalendarClock class="w-4 h-4" />
                   </div>
                   <div class="min-w-0">
-                    <div class="text-xs font-semibold text-foreground truncate">调度日志清理</div>
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-xs font-semibold text-foreground truncate">调度日志清理</span>
+                      <ModifiedBadge
+                        v-if="isDiff('scheduler_log_days') || isDiff('scheduler_log_max_count')"
+                        :show-reset="false"
+                      />
+                    </div>
                     <div class="text-[10px] text-muted-foreground truncate">定时任务触发与运行记录</div>
                   </div>
                 </div>
@@ -703,6 +822,7 @@ onMounted(loadSettings)
                       v-model="form.scheduler_log_days"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('scheduler_log_days')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">天</span>
@@ -712,6 +832,7 @@ onMounted(loadSettings)
                       v-model="form.scheduler_log_max_count"
                       type="number"
                       class="h-8 pr-7 text-xs"
+                      :class="diffClass('scheduler_log_max_count')"
                       min="0"
                     />
                     <span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none">条</span>
@@ -756,6 +877,11 @@ onMounted(loadSettings)
                 </Badge>
               </CardTitle>
               <div class="flex items-center gap-2 shrink-0">
+                <ModifiedBadge
+                  v-if="isDiff('cache_trim_enabled')"
+                  :original-value="getOriginal('cache_trim_enabled')"
+                  @reset="resetField('cache_trim_enabled')"
+                />
                 <Switch v-model="form.cache_trim_enabled" id="cache-trim-enabled" :disabled="isDemoMode" />
                 <Label for="cache-trim-enabled" class="text-xs cursor-pointer select-none">开启自适应</Label>
               </div>
@@ -774,12 +900,20 @@ onMounted(loadSettings)
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <!-- 警戒水位线 -->
               <div class="space-y-1.5">
-                <Label class="text-xs font-medium text-foreground">内存警戒水位</Label>
+                <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                  <span>内存警戒水位</span>
+                  <ModifiedBadge
+                    v-if="isDiff('mem_watermark_rate')"
+                    :original-value="getOriginal('mem_watermark_rate')"
+                    @reset="resetField('mem_watermark_rate')"
+                  />
+                </Label>
                 <div class="relative">
                   <Input
                     v-model="form.mem_watermark_rate"
                     type="number"
                     class="h-9 pr-8 text-sm"
+                    :class="diffClass('mem_watermark_rate')"
                     min="10"
                     max="99"
                     :disabled="isDemoMode || !form.cache_trim_enabled"
@@ -791,12 +925,20 @@ onMounted(loadSettings)
 
               <!-- 缓存释放阈值 -->
               <div class="space-y-1.5">
-                <Label class="text-xs font-medium text-foreground">缓存触发阈值</Label>
+                <Label class="text-xs font-medium text-foreground flex items-center justify-between">
+                  <span>缓存触发阈值</span>
+                  <ModifiedBadge
+                    v-if="isDiff('cache_max_mb')"
+                    :original-value="getOriginal('cache_max_mb')"
+                    @reset="resetField('cache_max_mb')"
+                  />
+                </Label>
                 <div class="relative">
                   <Input
                     v-model="form.cache_max_mb"
                     type="number"
                     class="h-9 pr-10 text-sm"
+                    :class="diffClass('cache_max_mb')"
                     min="10"
                     :disabled="isDemoMode || !form.cache_trim_enabled"
                   />
@@ -819,6 +961,11 @@ onMounted(loadSettings)
               </div>
               <div class="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                 <div class="flex items-center gap-1.5">
+                  <ModifiedBadge
+                    v-if="isDiff('task_finished_trim')"
+                    :original-value="getOriginal('task_finished_trim')"
+                    @reset="resetField('task_finished_trim')"
+                  />
                   <Switch v-model="form.task_finished_trim" id="task-finished-trim" :disabled="isDemoMode || !form.cache_trim_enabled" />
                   <Label for="task-finished-trim" class="text-xs cursor-pointer select-none">自动</Label>
                 </div>
@@ -846,34 +993,6 @@ onMounted(loadSettings)
                   基础语言环境（Python/Node/Mise等）始终保持内存常驻以保障任务秒级启动与 0 读盘；仅在内存超标或任务执行完成后对其局部工作区安全防抖清理（30秒冷却），避免容器内存与临时产物堆积。
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <!-- 模块 4: 配置保存与生效面板 -->
-        <Card class="shadow-sm flex flex-col justify-between pt-4 pb-5">
-          <CardHeader class="pb-3 pt-0 px-4 sm:px-5">
-            <div class="space-y-1">
-              <CardTitle class="text-base flex items-center gap-2">
-                <Save class="w-4 h-4 text-emerald-500" />
-                <span>保存与应用配置</span>
-              </CardTitle>
-              <CardDescription class="text-xs leading-relaxed pt-0.5">
-                提交并持久化当前设置，站点品牌、会话参数、日志清理策略及全局 OpenAPI 访问凭据将立即同步生效。
-              </CardDescription>
-            </div>
-          </CardHeader>
-
-          <CardContent class="px-4 sm:px-5 pb-0 pt-0">
-            <!-- 底部操作按钮栏 -->
-            <div class="pt-3 border-t border-border/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <span class="text-[11px] text-muted-foreground flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"></span>
-                修改提交后全站配置即时同步生效
-              </span>
-              <Button @click="saveSettings" :disabled="loading" class="h-8.5 px-5 text-xs font-medium shadow-sm w-full sm:w-auto justify-center">
-                {{ loading ? '保存中...' : '保存站点配置' }}
-              </Button>
             </div>
           </CardContent>
         </Card>

@@ -105,6 +105,7 @@ async function fetchPaths() {
 }
 
 const editorRef = shallowRef()
+let editorObserver: ResizeObserver | null = null
 const isSmallScreen = ref(window.innerWidth < 1024)
 const editorFontSize = computed(() => isSmallScreen.value ? 12 : 13)
 
@@ -152,6 +153,21 @@ function handleEditorMount(editor: any, monaco: any) {
       if (isCanceled) return
       console.error(err)
     })
+  }
+  // Monaco 的 automaticLayout 在容器被压到 0（最大化控制台、关闭底部面板）后不会重排，
+  // 表现为编辑器只剩几像素高；此处按容器实际尺寸变化兜底重排
+  editorObserver?.disconnect()
+  const host = editor.getDomNode()?.parentElement
+  if (host) {
+    let pending = 0
+    editorObserver = new ResizeObserver(() => {
+      if (pending) cancelAnimationFrame(pending)
+      pending = requestAnimationFrame(() => {
+        pending = 0
+        editor.layout()
+      })
+    })
+    editorObserver.observe(host)
   }
 }
 
@@ -691,6 +707,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('keydown', handleGlobalKeydown)
   window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+  editorObserver?.disconnect()
 })
 </script>
 
@@ -771,7 +788,7 @@ onUnmounted(() => {
         :style="{ touchAction: 'pan-x pan-y' }"
       >
         <template v-if="selectedFile">
-          <div v-if="isImageFile" class="h-full flex items-center justify-center p-4 bg-[#1a1a1a] overflow-auto select-none">
+          <div v-if="isImageFile" class="flex-1 min-h-0 flex items-center justify-center p-4 bg-[#1a1a1a] overflow-auto select-none">
             <div class="relative max-w-full max-h-full flex flex-col items-center">
               <img :src="api.files.download(selectedFile)" alt="Image preview" class="max-w-full max-h-[70vh] object-contain rounded border border-[#333] shadow-lg bg-[radial-gradient(#2e2e2e_20%,_transparent_20%)] bg-[size:16px_16px] p-2" />
               <div class="mt-3 px-3 py-1 bg-black/60 rounded-full text-[11px] text-gray-300 backdrop-blur">
@@ -779,7 +796,7 @@ onUnmounted(() => {
               </div>
             </div>
           </div>
-          <div v-else-if="isBinaryFile" class="h-full flex flex-col items-center justify-center text-muted-foreground p-4 bg-background/30 select-none">
+          <div v-else-if="isBinaryFile" class="flex-1 min-h-0 flex flex-col items-center justify-center text-muted-foreground p-4 bg-background/30 select-none">
             <div class="p-2.5 rounded-full bg-primary/5 mb-3 border border-primary/10">
               <AlertCircle class="h-6 w-6 text-primary/60" />
             </div>
@@ -793,41 +810,34 @@ onUnmounted(() => {
               </Button>
             </div>
           </div>
-          <!-- 编辑器主体：当底部终端打开时动态抬高底边距，彻底避免底部水平滑块被遮挡 -->
-          <div
+          <!-- 编辑器主体：占满面板之外的剩余高度，交由 flex 分配。不可用百分比 padding 预留空间——padding 百分比按包含块宽度解析，与按高度计算的面板高度不等价 -->
+          <vue-monaco-editor
             v-else
-            class="h-full w-full min-h-0 transition-all duration-300"
-            :class="[
-              showTerminalPanel && !isTerminalMaximized ? 'pb-[45%] max-pb-[80%]' : ''
-            ]"
-          >
-            <vue-monaco-editor
-              :key="selectedFile"
-              v-model:value="fileContent"
-              :language="getLanguage(selectedFile)"
-              theme="vs-dark"
-              :options="editorOptions"
-              @mount="handleEditorMount"
-            />
-          </div>
+            class="flex-1 min-h-0 w-full bg-[#1e1e1e]"
+            :key="selectedFile"
+            v-model:value="fileContent"
+            :language="getLanguage(selectedFile)"
+            theme="vs-dark"
+            :options="editorOptions"
+            @mount="handleEditorMount"
+          />
         </template>
-        <div v-else class="h-full flex items-center justify-center text-muted-foreground text-sm">
+        <div v-else class="flex-1 min-h-0 flex items-center justify-center text-muted-foreground text-sm">
           <span class="lg:hidden">从上方选择文件开始编辑</span>
           <span class="hidden lg:inline">从左侧选择文件开始编辑</span>
         </div>
 
-        <!-- VSCode 风格底部 Terminal 控制面板 -->
+        <!-- VSCode 风格底部 Terminal 控制面板：用高度过渡代替位移，面板高度变化时 flex-1 的编辑器会逐帧同步收缩/恢复，
+             避免布局已重排而面板还停在容器外滑入滑动，中间露出背景色空档 -->
         <transition
-          enter-active-class="transition-all duration-300 ease-out"
-          enter-from-class="translate-y-full opacity-0"
-          enter-to-class="translate-y-0 opacity-100"
-          leave-active-class="transition-all duration-200 ease-in"
-          leave-from-class="translate-y-0 opacity-100"
-          leave-to-class="translate-y-full opacity-0"
+          enter-active-class="transition-all duration-200 ease-out overflow-hidden"
+          enter-from-class="h-0! min-h-0!"
+          leave-active-class="transition-all duration-200 ease-in overflow-hidden"
+          leave-to-class="h-0! min-h-0!"
         >
           <div
             v-if="showTerminalPanel"
-            class="absolute bottom-0 left-0 right-0 z-20 flex flex-col bg-[#1e1e1e] border-t border-[#333] shadow-2xl transition-all"
+            class="shrink-0 flex flex-col bg-[#1e1e1e] border-t border-[#333] shadow-2xl overflow-hidden transition-all duration-200 ease-out"
             :class="isTerminalMaximized ? 'h-full' : 'h-[45%] min-h-[220px] max-h-[80%]'"
           >
             <div class="flex items-center justify-between px-3 py-1.5 bg-[#252526] border-b border-[#333] select-none shrink-0 gap-2">

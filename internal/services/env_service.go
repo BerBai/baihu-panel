@@ -43,7 +43,7 @@ func (es *EnvService) CreateEnvVar(name, value, remark, envType string, hidden, 
 
 func (es *EnvService) GetEnvVarsByUserID(userID string) []models.EnvironmentVariable {
 	var envs []models.EnvironmentVariable
-	database.DB.Where("user_id = ?", userID).Find(&envs)
+	database.DB.Find(&envs)
 	es.LoadEnvTags(envs)
 	return envs
 }
@@ -58,7 +58,7 @@ func (es *EnvService) GetEnvVarsWithPagination(userID string, name string, envTy
 	var envs []models.EnvironmentVariable
 	var total int64
 
-	query := database.DB.Model(&models.EnvironmentVariable{}).Where("user_id = ?", userID)
+	query := database.DB.Model(&models.EnvironmentVariable{})
 	if name != "" {
 		query = query.Where("name LIKE ? OR remark LIKE ?", "%"+name+"%", "%"+name+"%")
 	}
@@ -429,7 +429,7 @@ func (es *EnvService) SetOrUpdateEnvVar(name, value, remark, envType string, hid
 		userID = es.GetDefaultAdminUserID()
 	}
 	var existing models.EnvironmentVariable
-	res := database.DB.Where("name = ? AND user_id = ?", name, userID).Limit(1).Find(&existing)
+	res := database.DB.Where("name = ?", name).Limit(1).Find(&existing)
 	if res.Error == nil && res.RowsAffected > 0 {
 		updated := es.UpdateEnvVarWithTags(existing.ID, name, value, remark, envType, hidden, enabled, tags)
 		return updated, false // false 表示是更新

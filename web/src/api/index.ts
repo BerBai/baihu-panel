@@ -1090,9 +1090,16 @@ export interface NotifyFilter {
   updated_at?: string
 }
 
+export interface CustomVarRule {
+  name: string
+  regex: string
+  default?: string
+}
+
 export interface BindingExtra {
   enable_log: boolean
   log_limit: number
+  custom_vars?: CustomVarRule[]
 }
 
 export interface NotifyResult {

@@ -9,6 +9,9 @@
     <script>
       (function () {
         try {
+          if (navigator.userAgent.indexOf('Windows') !== -1) {
+            document.documentElement.classList.add('is-windows');
+          }
           var t = localStorage.getItem('theme');
           var isDark = t === 'dark' || ((!t || t === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
           if (isDark) {

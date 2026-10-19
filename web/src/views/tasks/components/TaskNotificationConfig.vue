@@ -4,8 +4,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Switch } from '@/components/ui/switch'
-import { Bell, BellOff, CheckCircle2, XCircle, Clock, FileText } from 'lucide-vue-next'
-import { api, type NotifyChannel, type NotifyBinding } from '@/api'
+import { Button } from '@/components/ui/button'
+import { Bell, BellOff, CheckCircle2, XCircle, Clock, FileText, Variable, Plus, Trash2, ExternalLink, Info } from 'lucide-vue-next'
+import { api, type NotifyChannel, type NotifyBinding, type CustomVarRule } from '@/api'
 
 const props = defineProps<{
   taskId?: string
@@ -18,6 +19,15 @@ const notifyOnFailure = ref(false)
 const notifyOnTimeout = ref(false)
 const notifyIncludeLog = ref(false)
 const notifyLogLimit = ref(1000)
+const customVars = ref<CustomVarRule[]>([])
+
+function addCustomVar() {
+  customVars.value.push({ name: '', regex: '', default: '' })
+}
+
+function removeCustomVar(index: number) {
+  customVars.value.splice(index, 1)
+}
 
 const currentChannel = computed(() => {
   if (notifyWayId.value === 'none') return null
@@ -44,6 +54,7 @@ function resetConfig() {
   notifyOnTimeout.value = false
   notifyIncludeLog.value = false
   notifyLogLimit.value = 1000
+  customVars.value = []
 }
 
 async function loadConfig(taskId?: string) {
@@ -71,13 +82,16 @@ async function loadConfig(taskId?: string) {
           const extra = JSON.parse(extraBinding.extra)
           notifyIncludeLog.value = !!extra.enable_log
           notifyLogLimit.value = extra.log_limit || 1000
+          customVars.value = Array.isArray(extra.custom_vars) ? extra.custom_vars : []
         } catch {
           notifyIncludeLog.value = false
           notifyLogLimit.value = 1000
+          customVars.value = []
         }
       } else {
         notifyIncludeLog.value = false
         notifyLogLimit.value = 1000
+        customVars.value = []
       }
     } else {
       resetConfig()
@@ -99,9 +113,13 @@ async function saveConfig(taskId: string) {
         { type: 'task_timeout', enabled: notifyOnTimeout.value }
       ]
 
+      // 仅保留名称非空的有效规则
+      const validCustomVars = customVars.value.filter(v => v.name && v.name.trim() !== '')
+
       const extra = JSON.stringify({
         enable_log: notifyIncludeLog.value,
-        log_limit: notifyLogLimit.value
+        log_limit: notifyLogLimit.value,
+        custom_vars: validCustomVars
       })
 
       for (const event of events) {
@@ -285,6 +303,135 @@ defineExpose({
             </div>
           </div>
         </div>
+
+        <!-- 变量提取 (Issue #196) -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 items-start gap-3">
+          <Label class="sm:text-right text-xs text-foreground/70 uppercase tracking-wider font-bold pt-2.5">变量提取</Label>
+          <div class="sm:col-span-3">
+            <div class="p-3 rounded-xl bg-muted/15 border border-muted-foreground/10 space-y-3">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div class="space-y-0.5">
+                  <div class="flex items-center gap-2">
+                    <Variable class="h-4 w-4 text-primary shrink-0" />
+                    <span class="text-xs font-bold text-foreground">日志变量正则提取</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded font-medium bg-primary/10 text-primary">
+                      {{ customVars.length > 0 ? `${customVars.length} 个规则` : '未配置' }}
+                    </span>
+                  </div>
+                  <p class="text-[11px] text-muted-foreground">
+                    通过正则提取日志内容注入到通知模板变量（如 <span v-pre class="inline-block whitespace-nowrap px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium text-[10.5px]">{{coins}}</span>）
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="h-7 text-xs gap-1 border-muted-foreground/20 hover:border-primary/50 hover:bg-primary/5 self-start sm:self-auto shrink-0"
+                  @click="addCustomVar"
+                >
+                  <Plus class="h-3.5 w-3.5" />
+                  <span>添加规则</span>
+                </Button>
+              </div>
+
+              <!-- 规则列表 -->
+              <div v-if="customVars.length > 0" class="space-y-2 pt-1">
+                <div
+                  v-for="(rule, idx) in customVars"
+                  :key="idx"
+                  class="p-2.5 rounded-lg bg-background border border-muted-foreground/15 flex flex-col md:flex-row items-stretch md:items-center gap-2 animate-in fade-in-50 duration-200"
+                >
+                  <!-- 变量名 -->
+                  <div class="flex-1 min-w-[110px]">
+                    <div class="text-[10px] font-medium text-muted-foreground mb-1">变量名称 (Key)</div>
+                    <input
+                      v-model="rule.name"
+                      type="text"
+                      placeholder="如: coins"
+                      class="w-full h-7 px-2 text-xs font-inter bg-muted/20 rounded border border-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  <!-- 正则表达式 -->
+                  <div class="flex-[2] min-w-[180px]">
+                    <div class="text-[10px] font-medium text-muted-foreground mb-1">捕获正则 (优先匹配第 1 捕获组)</div>
+                    <input
+                      v-model="rule.regex"
+                      type="text"
+                      placeholder="如: 获得硬币[：:]\s*(\d+)"
+                      class="w-full h-7 px-2 text-xs font-inter bg-muted/20 rounded border border-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  <!-- 缺省值 -->
+                  <div class="flex-1 min-w-[90px]">
+                    <div class="text-[10px] font-medium text-muted-foreground mb-1">未匹配默认值 (可选)</div>
+                    <input
+                      v-model="rule.default"
+                      type="text"
+                      placeholder="如: 0"
+                      class="w-full h-7 px-2 text-xs bg-muted/20 rounded border border-muted-foreground/20 focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+
+                  <!-- 删除按钮 -->
+                  <div class="shrink-0 self-end md:self-center md:pt-4">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      title="删除规则"
+                      @click="removeCustomVar(idx)"
+                    >
+                      <Trash2 class="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 协议与使用说明 (专业重排布局) -->
+              <div class="pt-3 border-t border-muted-foreground/10 space-y-2">
+                <div class="flex items-center justify-between text-xs">
+                  <div class="flex items-center gap-1.5 text-foreground/90 font-medium">
+                    <Info class="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span>免配置直出协议与使用说明</span>
+                  </div>
+                  <a
+                    href="https://engigu.github.io/baihu-panel/guide/notify.html#进阶-自定义变量提取与模板注入-issue-196"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-medium transition-colors"
+                  >
+                    <span>查看完整文档</span>
+                    <ExternalLink class="h-3 w-3" />
+                  </a>
+                </div>
+
+                <div class="grid gap-1.5 pl-5 text-[11px] text-muted-foreground leading-relaxed">
+                  <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span>• 脚本可在日志直接打印</span>
+                    <span class="inline-block whitespace-nowrap px-1.5 py-0.5 rounded bg-muted/80 text-foreground border border-muted-foreground/15 text-[10.5px]">
+                      [BHP_VAR] coins=50
+                    </span>
+                    <span>或</span>
+                    <span class="inline-block whitespace-nowrap px-1.5 py-0.5 rounded bg-muted/80 text-foreground border border-muted-foreground/15 text-[10.5px]">
+                      ::set-output name=coins::50
+                    </span>
+                    <span>，系统将自动无感提取。</span>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span>• 提取后可在渠道模板中直接使用</span>
+                    <span v-pre class="inline-block whitespace-nowrap px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium text-[10.5px]">
+                      {{coins}}
+                    </span>
+                    <span>占位符引用。</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </template>
     </div>
   </section>
@@ -297,6 +444,11 @@ defineExpose({
 :deep(label) {
   text-rendering: optimizeLegibility;
   letter-spacing: 0.01em;
+}
+:deep(.font-inter),
+.font-inter {
+  font-family: 'Inter', 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  letter-spacing: -0.01em;
 }
 </style>
 

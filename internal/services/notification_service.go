@@ -369,6 +369,96 @@ func (s *NotificationService) parseTemplate(tmpl string, payload map[string]inte
 	return result
 }
 
+// ExtractCustomVars 从控制台原始输出和配置规则中提取自定义模板变量
+func ExtractCustomVars(rawOutput string, rules []models.CustomVarRule) map[string]string {
+	customVars := make(map[string]string)
+
+	// 首先注入规则的默认值（确保未匹配时也有默认值）
+	for _, r := range rules {
+		name := strings.TrimSpace(r.Name)
+		if name != "" && r.Default != "" {
+			customVars[name] = r.Default
+		}
+	}
+
+	if rawOutput == "" {
+		return customVars
+	}
+
+	cleanOutput := stripAnsi(rawOutput)
+
+	// 1. 扫描脚本日志中的自声明键值对（免配置代码直出协议）
+	// 支持格式: [BHP_VAR] key=value, [NOTIFY_VAR] key=value, [OUTPUT] key=value
+	// 兼容标准: ::set-output name=key::value
+	// 支持格式: [BHP_JSON] {"key": "value"}
+	lines := strings.Split(cleanOutput, "\n")
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[BHP_VAR]") || strings.HasPrefix(trimmed, "[NOTIFY_VAR]") || strings.HasPrefix(trimmed, "[OUTPUT]") {
+			parts := strings.SplitN(trimmed, "]", 2)
+			if len(parts) == 2 {
+				kvStr := strings.TrimSpace(parts[1])
+				kv := strings.SplitN(kvStr, "=", 2)
+				if len(kv) == 2 {
+					k := strings.TrimSpace(kv[0])
+					v := strings.TrimSpace(kv[1])
+					if k != "" {
+						customVars[k] = v
+					}
+				}
+			}
+		} else if strings.HasPrefix(trimmed, "::set-output ") {
+			rest := strings.TrimPrefix(trimmed, "::set-output ")
+			if strings.HasPrefix(rest, "name=") {
+				parts := strings.SplitN(strings.TrimPrefix(rest, "name="), "::", 2)
+				if len(parts) == 2 {
+					k := strings.TrimSpace(parts[0])
+					v := strings.TrimSpace(parts[1])
+					if k != "" {
+						customVars[k] = v
+					}
+				}
+			}
+		} else if strings.HasPrefix(trimmed, "[BHP_JSON]") || strings.HasPrefix(trimmed, "[NOTIFY_JSON]") {
+			parts := strings.SplitN(trimmed, "]", 2)
+			if len(parts) == 2 {
+				jsonStr := strings.TrimSpace(parts[1])
+				var obj map[string]interface{}
+				if err := json.Unmarshal([]byte(jsonStr), &obj); err == nil {
+					for k, v := range obj {
+						customVars[k] = fmt.Sprintf("%v", v)
+					}
+				}
+			}
+		}
+	}
+
+	// 2. 根据任务通知绑定配置的正则规则提取（适用于第三方开源脚本，无需修改源码）
+	for _, rule := range rules {
+		k := strings.TrimSpace(rule.Name)
+		if k == "" || strings.TrimSpace(rule.Regex) == "" {
+			continue
+		}
+
+		re, err := regexp.Compile(rule.Regex)
+		if err != nil {
+			logger.Warnf("[Notify] 自定义变量 %s 正则编译失败: %v", k, err)
+			continue
+		}
+
+		matches := re.FindStringSubmatch(cleanOutput)
+		if len(matches) > 1 {
+			// 优先使用第 1 个捕获组
+			customVars[k] = strings.TrimSpace(matches[1])
+		} else if len(matches) == 1 {
+			// 无括号捕获组时，使用全匹配
+			customVars[k] = strings.TrimSpace(matches[0])
+		}
+	}
+
+	return customVars
+}
+
 // getDefaultMessage 兜底默认消息内容
 func (s *NotificationService) getDefaultMessage(eventType string, payload map[string]interface{}) (string, string) {
 	var title, text string
@@ -526,6 +616,30 @@ func (s *NotificationService) handleEvent(bindingType string) eventbus.Handler {
 			return
 		}
 
+		bindings := s.GetBindingsByEvent(bindingType, e.Type, dataID)
+		if len(bindings) == 0 {
+			return
+		}
+
+		// 收集所有绑定中配置的自定义变量提取规则
+		var customRules []models.CustomVarRule
+		for _, b := range bindings {
+			if b.Extra != "" {
+				var extra models.BindingExtra
+				if err := json.Unmarshal([]byte(b.Extra), &extra); err == nil && len(extra.CustomVars) > 0 {
+					customRules = append(customRules, extra.CustomVars...)
+				}
+			}
+		}
+
+		// 从脚本日志输出和配置规则中提取自定义模板变量，并合并至 payload 供后续模板与过滤器渲染
+		customVars := ExtractCustomVars(rawOutput, customRules)
+		for k, v := range customVars {
+			if _, exists := payload[k]; !exists {
+				payload[k] = v
+			}
+		}
+
 		// 构建最终的通知标题和正文文本
 		title, text = s.buildMessage(e.Type, tmplTitleKey, tmplTextKey, title, text, prefix, payload)
 
@@ -533,11 +647,6 @@ func (s *NotificationService) handleEvent(bindingType string) eventbus.Handler {
 		if rawOutput != "" {
 			// cleanLog = stripAnsi(rawOutput)
 			cleanLog = rawOutput
-		}
-
-		bindings := s.GetBindingsByEvent(bindingType, e.Type, dataID)
-		if len(bindings) == 0 {
-			return
 		}
 
 		channels := s.GetChannels()

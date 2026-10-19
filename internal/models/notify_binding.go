@@ -16,10 +16,18 @@ type NotifyBinding struct {
 	UpdatedAt LocalTime `json:"updated_at"`
 }
 
+// CustomVarRule 从日志中提取自定义变量的规则
+type CustomVarRule struct {
+	Name    string `json:"name"`              // 变量名，在模板中通过 {{name}} 使用
+	Regex   string `json:"regex"`             // 正则表达式，捕获组 $1 将作为变量值（若无捕获组则取整体匹配）
+	Default string `json:"default,omitempty"` // 匹配失败时的兜底默认值
+}
+
 // BindingExtra 存储在 Extra 字段中的 JSON 配置
 type BindingExtra struct {
-	EnableLog bool `json:"enable_log"`
-	LogLimit  int  `json:"log_limit"` // 日志字数限制，默认 1000
+	EnableLog  bool            `json:"enable_log"`
+	LogLimit   int             `json:"log_limit"` // 日志字数限制，默认 1000
+	CustomVars []CustomVarRule `json:"custom_vars,omitempty"` // 自定义变量提取规则
 }
 
 func (NotifyBinding) TableName() string {

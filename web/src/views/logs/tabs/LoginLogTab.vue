@@ -253,7 +253,7 @@ defineExpose({
             <template #description>
                 <button
                     type="button"
-                    class="inline-flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded font-mono text-[11px] tracking-wide transition-colors group cursor-pointer"
+                    class="inline-flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary px-2.5 py-0.5 rounded-md font-inter text-xs font-medium tracking-tight transition-colors group cursor-pointer"
                     title="点击复制 IP 地址"
                     @click="copyText(selectedIp, 'IP 地址已复制')"
                 >
@@ -265,58 +265,58 @@ defineExpose({
             <div v-if="ipGeoLoading" class="flex items-center justify-center py-12">
                 <Loader2 class="h-8 w-8 animate-spin text-primary/40" />
             </div>
-            <div v-else-if="ipGeoInfo" class="space-y-3">
+            <div v-else-if="ipGeoInfo" class="space-y-3 font-inter">
                 <!-- 顶部快捷信息网格：国家/地区、时区 -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                     <div class="p-3 rounded-xl bg-muted/20 border border-border/10 space-y-1">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">国家 / 地区</p>
-                        <p class="text-sm font-medium flex items-center gap-1.5 flex-wrap">
-                            <span v-if="getCountryFlag(ipGeoInfo.country_code)" class="text-base leading-none">
+                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold font-inter">国家 / 地区</p>
+                        <p class="text-sm font-semibold text-foreground flex items-center gap-1.5 flex-wrap font-inter">
+                            <span v-if="getCountryFlag(ipGeoInfo.country_code)" class="text-base leading-none select-none">
                                 {{ getCountryFlag(ipGeoInfo.country_code) }}
                             </span>
                             <span class="break-words">{{ ipGeoInfo.country || '-' }}</span>
-                            <span v-if="ipGeoInfo.country_code" class="text-xs text-muted-foreground font-mono">
+                            <span v-if="ipGeoInfo.country_code" class="text-xs text-muted-foreground font-medium font-inter">
                                 ({{ ipGeoInfo.country_code }})
                             </span>
                         </p>
                     </div>
                     <div class="p-3 rounded-xl bg-muted/20 border border-border/10 space-y-1">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">时区</p>
-                        <p class="text-sm font-medium flex items-center gap-1.5 flex-wrap">
+                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold font-inter">时区</p>
+                        <p class="text-sm font-semibold text-foreground flex items-center gap-1.5 flex-wrap font-inter">
                             <span class="break-words">{{ ipGeoInfo.timezone || '-' }}</span>
-                            <span v-if="ipGeoInfo.offset !== undefined && ipGeoInfo.offset !== null" class="text-xs text-muted-foreground font-mono">
+                            <span v-if="ipGeoInfo.offset !== undefined && ipGeoInfo.offset !== null" class="text-xs text-muted-foreground font-medium font-inter">
                                 ({{ formatUtcOffset(ipGeoInfo.offset) }})
                             </span>
                         </p>
                     </div>
                 </div>
 
-                <!-- 核心归属详情：运营商、组织、ASN（左对齐自然折行，彻底消除漂移与信息截断） -->
-                <div class="p-3.5 sm:p-4 rounded-xl bg-muted/20 border border-border/10 space-y-3">
+                <!-- 核心归属详情：运营商、组织、ASN（纯正 Inter 字体，左对齐自然折行） -->
+                <div class="p-3.5 sm:p-4 rounded-xl bg-muted/20 border border-border/10 space-y-3 font-inter">
                     <!-- 运营商 -->
-                    <div class="flex items-start gap-3 text-sm">
-                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">运营商</span>
-                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0">
+                    <div class="flex items-start gap-3 text-sm font-inter">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium font-inter">运营商</span>
+                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0 font-inter">
                             {{ ipGeoInfo.isp || '-' }}
                         </div>
                     </div>
 
                     <!-- 组织 -->
-                    <div class="flex items-start gap-3 text-sm">
-                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">组织</span>
-                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0">
+                    <div class="flex items-start gap-3 text-sm font-inter">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium font-inter">组织</span>
+                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0 font-inter">
                             {{ ipGeoInfo.organization || '-' }}
                         </div>
                     </div>
 
                     <!-- ASN -->
-                    <div class="flex items-start gap-3 text-sm">
-                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">ASN</span>
-                        <div class="flex-1 min-w-0 space-y-1.5">
-                            <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-xs font-semibold">
+                    <div class="flex items-start gap-3 text-sm font-inter">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium font-inter">ASN</span>
+                        <div class="flex-1 min-w-0 space-y-1.5 font-inter">
+                            <div class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-primary/10 text-primary font-inter text-xs font-semibold tracking-wide">
                                 AS{{ ipGeoInfo.asn || '-' }}
                             </div>
-                            <div v-if="ipGeoInfo.asn_organization" class="text-xs text-muted-foreground break-words leading-relaxed select-text">
+                            <div v-if="ipGeoInfo.asn_organization" class="text-xs text-muted-foreground break-words leading-relaxed select-text font-inter">
                                 {{ ipGeoInfo.asn_organization }}
                             </div>
                         </div>
@@ -324,13 +324,13 @@ defineExpose({
                 </div>
 
                 <!-- 地理坐标 -->
-                <div v-if="ipGeoInfo.latitude !== undefined && ipGeoInfo.longitude !== undefined" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 text-xs gap-2">
-                    <div class="flex items-center gap-2 text-muted-foreground font-medium shrink-0">
+                <div v-if="ipGeoInfo.latitude !== undefined && ipGeoInfo.longitude !== undefined" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 text-xs gap-2 font-inter">
+                    <div class="flex items-center gap-2 text-muted-foreground font-medium shrink-0 font-inter">
                         <MapPin class="h-3.5 w-3.5 text-primary/70 shrink-0" />
                         <span>地理坐标</span>
                     </div>
-                    <div class="flex items-center gap-1.5 min-w-0 justify-end">
-                        <span class="font-mono text-primary/80 font-medium tabular-nums truncate select-all" :title="`${ipGeoInfo.latitude}, ${ipGeoInfo.longitude}`">
+                    <div class="flex items-center gap-1.5 min-w-0 justify-end font-inter">
+                        <span class="font-inter text-primary/90 font-medium tabular-nums truncate select-all" :title="`${ipGeoInfo.latitude}, ${ipGeoInfo.longitude}`">
                             {{ ipGeoInfo.latitude }}, {{ ipGeoInfo.longitude }}
                         </span>
                         <button
@@ -344,9 +344,16 @@ defineExpose({
                     </div>
                 </div>
             </div>
-            <div v-else class="text-center text-muted-foreground py-8 italic text-sm">
+            <div v-else class="text-center text-muted-foreground py-8 italic text-sm font-inter">
                 无法获取 IP 信息，请稍后再试
             </div>
         </BaihuDialog>
     </div>
 </template>
+
+<style scoped>
+:deep(.font-inter),
+.font-inter {
+  font-family: 'Inter', 'Inter Variable', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+}
+</style>

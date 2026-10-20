@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import Pagination from '@/components/Pagination.vue'
-import { Loader2 } from 'lucide-vue-next'
+import { Loader2, Copy, MapPin } from 'lucide-vue-next'
 import TextOverflow from '@/components/TextOverflow.vue'
 import { api, LOG_CATEGORY } from '@/api'
 import { toast } from 'vue-sonner'
@@ -10,6 +10,7 @@ import { useEventBus } from '@/composables/useEventBus'
 import { LOG_EVENTS } from '@/constants'
 import BaihuDialog from '@/components/ui/BaihuDialog.vue'
 import { formatDateTime } from '@/utils/date'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps<{
     username: string
@@ -68,6 +69,28 @@ async function showIpInfo(ip: string) {
         toast.error('获取 IP 信息失败')
     } finally {
         ipGeoLoading.value = false
+    }
+}
+
+function getCountryFlag(code?: string) {
+    if (!code || code.length !== 2) return ''
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65))
+}
+
+function formatUtcOffset(offset?: number) {
+    if (offset === undefined || offset === null) return ''
+    const hours = offset / 3600
+    const sign = hours >= 0 ? '+' : ''
+    return `UTC${sign}${hours}`
+}
+
+async function copyText(text: string, successMsg: string) {
+    if (!text) return
+    const success = await copyToClipboard(text)
+    if (success) {
+        toast.success(successMsg)
+    } else {
+        toast.error('复制失败')
     }
 }
 
@@ -226,47 +249,99 @@ defineExpose({
         </div>
 
         <!-- IP 地理位置弹窗 -->
-        <BaihuDialog v-model:open="ipDialogOpen" title="IP 详情">
+        <BaihuDialog v-model:open="ipDialogOpen" title="IP 详情" size="sm" icon="Globe">
             <template #description>
-                <code class="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded font-mono tracking-wider">{{ selectedIp }}</code>
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded font-mono text-[11px] tracking-wide transition-colors group cursor-pointer"
+                    title="点击复制 IP 地址"
+                    @click="copyText(selectedIp, 'IP 地址已复制')"
+                >
+                    <span>{{ selectedIp }}</span>
+                    <Copy class="h-3 w-3 opacity-60 group-hover:opacity-100 transition-opacity" />
+                </button>
             </template>
 
             <div v-if="ipGeoLoading" class="flex items-center justify-center py-12">
                 <Loader2 class="h-8 w-8 animate-spin text-primary/40" />
             </div>
-            <div v-else-if="ipGeoInfo" class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div v-else-if="ipGeoInfo" class="space-y-3">
+                <!-- 顶部快捷信息网格：国家/地区、时区 -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
                     <div class="p-3 rounded-xl bg-muted/20 border border-border/10 space-y-1">
-                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">国家/地区</p>
-                        <p class="text-sm font-medium">{{ ipGeoInfo.country }} ({{ ipGeoInfo.country_code }})</p>
+                        <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">国家 / 地区</p>
+                        <p class="text-sm font-medium flex items-center gap-1.5 flex-wrap">
+                            <span v-if="getCountryFlag(ipGeoInfo.country_code)" class="text-base leading-none">
+                                {{ getCountryFlag(ipGeoInfo.country_code) }}
+                            </span>
+                            <span class="break-words">{{ ipGeoInfo.country || '-' }}</span>
+                            <span v-if="ipGeoInfo.country_code" class="text-xs text-muted-foreground font-mono">
+                                ({{ ipGeoInfo.country_code }})
+                            </span>
+                        </p>
                     </div>
                     <div class="p-3 rounded-xl bg-muted/20 border border-border/10 space-y-1">
                         <p class="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">时区</p>
-                        <p class="text-sm font-medium">{{ ipGeoInfo.timezone || '-' }}</p>
+                        <p class="text-sm font-medium flex items-center gap-1.5 flex-wrap">
+                            <span class="break-words">{{ ipGeoInfo.timezone || '-' }}</span>
+                            <span v-if="ipGeoInfo.offset !== undefined && ipGeoInfo.offset !== null" class="text-xs text-muted-foreground font-mono">
+                                ({{ formatUtcOffset(ipGeoInfo.offset) }})
+                            </span>
+                        </p>
                     </div>
                 </div>
 
-                <div class="p-4 rounded-xl bg-muted/20 border border-border/10 space-y-3">
-                    <div class="flex justify-between items-center text-sm gap-2">
-                        <span class="text-muted-foreground shrink-0">运营商</span>
-                        <span class="font-medium truncate text-right">{{ ipGeoInfo.isp || '-' }}</span>
+                <!-- 核心归属详情：运营商、组织、ASN（左对齐自然折行，彻底消除漂移与信息截断） -->
+                <div class="p-3.5 sm:p-4 rounded-xl bg-muted/20 border border-border/10 space-y-3">
+                    <!-- 运营商 -->
+                    <div class="flex items-start gap-3 text-sm">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">运营商</span>
+                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0">
+                            {{ ipGeoInfo.isp || '-' }}
+                        </div>
                     </div>
-                    <div class="flex justify-between items-center text-sm gap-2">
-                        <span class="text-muted-foreground shrink-0">组织</span>
-                        <span class="font-medium truncate text-right">{{ ipGeoInfo.organization || '-' }}</span>
+
+                    <!-- 组织 -->
+                    <div class="flex items-start gap-3 text-sm">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">组织</span>
+                        <div class="font-medium text-foreground break-words flex-1 leading-relaxed select-text min-w-0">
+                            {{ ipGeoInfo.organization || '-' }}
+                        </div>
                     </div>
-                    <div class="flex justify-between items-start text-sm gap-2">
-                        <span class="text-muted-foreground shrink-0 mt-0.5">ASN</span>
-                        <div class="text-right min-w-0">
-                            <div class="font-medium font-mono text-xs text-primary/80">AS{{ ipGeoInfo.asn }}</div>
-                            <div class="text-xs text-muted-foreground truncate" :title="ipGeoInfo.asn_organization">{{ ipGeoInfo.asn_organization || '-' }}</div>
+
+                    <!-- ASN -->
+                    <div class="flex items-start gap-3 text-sm">
+                        <span class="text-xs text-muted-foreground shrink-0 w-14 pt-0.5 font-medium">ASN</span>
+                        <div class="flex-1 min-w-0 space-y-1.5">
+                            <div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-primary/10 text-primary font-mono text-xs font-semibold">
+                                AS{{ ipGeoInfo.asn || '-' }}
+                            </div>
+                            <div v-if="ipGeoInfo.asn_organization" class="text-xs text-muted-foreground break-words leading-relaxed select-text">
+                                {{ ipGeoInfo.asn_organization }}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 text-[11px] sm:text-xs">
-                    <span class="text-muted-foreground font-medium">地理坐标</span>
-                    <span class="font-mono text-primary/70">{{ ipGeoInfo.latitude }}, {{ ipGeoInfo.longitude }}</span>
+                <!-- 地理坐标 -->
+                <div v-if="ipGeoInfo.latitude !== undefined && ipGeoInfo.longitude !== undefined" class="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10 text-xs gap-2">
+                    <div class="flex items-center gap-2 text-muted-foreground font-medium shrink-0">
+                        <MapPin class="h-3.5 w-3.5 text-primary/70 shrink-0" />
+                        <span>地理坐标</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 min-w-0 justify-end">
+                        <span class="font-mono text-primary/80 font-medium tabular-nums truncate select-all" :title="`${ipGeoInfo.latitude}, ${ipGeoInfo.longitude}`">
+                            {{ ipGeoInfo.latitude }}, {{ ipGeoInfo.longitude }}
+                        </span>
+                        <button
+                            type="button"
+                            class="text-muted-foreground hover:text-foreground transition-colors p-1 rounded hover:bg-background/80 shrink-0 cursor-pointer"
+                            title="复制坐标"
+                            @click="copyText(`${ipGeoInfo.latitude}, ${ipGeoInfo.longitude}`, '地理坐标已复制')"
+                        >
+                            <Copy class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
                 </div>
             </div>
             <div v-else class="text-center text-muted-foreground py-8 italic text-sm">

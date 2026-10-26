@@ -231,15 +231,15 @@ func (ic *InterconnectController) SyncScript(c *gin.Context) {
 			continue
 		}
 
-		client, apiURL, err := ic.getClientAndURL(node, "/api/v1/scripts/save")
+		client, apiURL, err := ic.getClientAndURL(node, "/api/v1/files/content")
 		if err != nil {
 			results = append(results, map[string]interface{}{"node_id": nodeID, "success": false, "msg": "反向隧道未连接"})
 			continue
 		}
 		
 		payload := map[string]interface{}{
-			"filename": req.Filename,
-			"content":  req.Content,
+			"path":    req.Filename,
+			"content": req.Content,
 		}
 		payloadBytes, _ := json.Marshal(payload)
 
@@ -529,4 +529,4 @@ func (ic *InterconnectController) getClientAndURL(node *models.InterconnectNode,
 
 	targetURL := strings.TrimRight(node.URL, "/") + path
 	return ic.httpClient, targetURL, nil
-}
+}

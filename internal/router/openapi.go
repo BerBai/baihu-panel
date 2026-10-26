@@ -107,12 +107,15 @@ func registerOpenAPIScriptRoutes(g *gin.RouterGroup, c *Controllers) {
 	}
 }
 
-// registerOpenAPIFileRoutes 注册 OpenAPI 文件树相关路由
+// registerOpenAPIFileRoutes 注册 OpenAPI 文件相关路由
 func registerOpenAPIFileRoutes(g *gin.RouterGroup, c *Controllers) {
 	files := g.Group("/files")
 	{
 		files.GET("/tree", c.File.GetFileTree)
 		files.GET("/search", c.File.SearchFiles)
 		files.GET("/content", c.File.GetFileContent)
+		files.POST("/content", c.File.SaveFileContent)
+		files.POST("/create", c.File.CreateFile)
+		files.POST("/delete", c.File.DeleteFile)
 	}
 }

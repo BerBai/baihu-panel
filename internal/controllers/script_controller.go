@@ -16,9 +16,9 @@ func NewScriptController(scriptService *services.ScriptService) *ScriptControlle
 	return &ScriptController{scriptService: scriptService}
 }
 
-// CreateScript 创建脚本
-// @Summary 创建脚本
-// @Description 创建一个新的脚本
+// CreateScript 创建脚本（数据库文本记录，非磁盘物理文件）
+// @Summary 创建脚本（数据库文本记录）
+// @Description 创建一个新的脚本记录存储于数据库（注意：非磁盘物理文件，不直接参与任务执行；任务物理文件请使用 /files 相关接口）
 // @Tags 脚本管理
 // @Accept json
 // @Produce json

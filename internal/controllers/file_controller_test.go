@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -202,6 +203,63 @@ func TestFileController_SearchFiles(t *testing.T) {
 	json.Unmarshal(w2.Body.Bytes(), &resp2)
 	if len(resp2.Data) != 1 {
 		t.Fatalf("Expected 1 file with limit=1, got %d", len(resp2.Data))
+	}
+}
+
+func TestFileController_SaveFileContent_And_Delete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tempDir, err := os.MkdirTemp("", "baihu-file-save-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	fc := NewFileController(tempDir)
+	r := gin.New()
+	r.POST("/files/content", fc.SaveFileContent)
+	r.POST("/files/create", fc.CreateFile)
+	r.POST("/files/delete", fc.DeleteFile)
+
+	// 1. 保存文件
+	savePayload := `{"path":"test.js","content":"console.log('hello');"}`
+	req, _ := http.NewRequest(http.MethodPost, "/files/content", strings.NewReader(savePayload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	content, err := os.ReadFile(filepath.Join(tempDir, "test.js"))
+	if err != nil || string(content) != "console.log('hello');" {
+		t.Fatalf("File content mismatch: %v, %s", err, string(content))
+	}
+
+	// 2. 目录穿越检查
+	hackPayload := `{"path":"../hack.js","content":"hacked"}`
+	reqHack, _ := http.NewRequest(http.MethodPost, "/files/content", strings.NewReader(hackPayload))
+	reqHack.Header.Set("Content-Type", "application/json")
+	wHack := httptest.NewRecorder()
+	r.ServeHTTP(wHack, reqHack)
+
+	if wHack.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 for directory traversal, got %d", wHack.Code)
+	}
+
+	// 3. 删除文件
+	delPayload := `{"path":"test.js"}`
+	reqDel, _ := http.NewRequest(http.MethodPost, "/files/delete", strings.NewReader(delPayload))
+	reqDel.Header.Set("Content-Type", "application/json")
+	wDel := httptest.NewRecorder()
+	r.ServeHTTP(wDel, reqDel)
+
+	if wDel.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", wDel.Code)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, "test.js")); !os.IsNotExist(err) {
+		t.Fatalf("File should be deleted")
 	}
 }
 

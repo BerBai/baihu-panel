@@ -339,6 +339,19 @@ func (fc *FileController) GetFileContent(c *gin.Context) {
 	})
 }
 
+// SaveFileContent 保存文件内容
+// @Summary 保存文件内容
+// @Description 保存指定路径的文件文本内容
+// @Tags 文件管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "文件内容与路径"
+// @Success 200 {object} utils.Response "保存成功"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 403 {object} utils.Response "访问被拒绝"
+// @Failure 500 {object} utils.Response "服务器内部错误"
+// @Router /files/content [post]
 func (fc *FileController) SaveFileContent(c *gin.Context) {
 	var req struct {
 		Path    string `json:"path" binding:"required"`
@@ -366,6 +379,19 @@ func (fc *FileController) SaveFileContent(c *gin.Context) {
 	utils.SuccessMsg(c, "保存成功")
 }
 
+// CreateFile 创建文件或目录
+// @Summary 创建文件或目录
+// @Description 创建指定路径的文件或目录
+// @Tags 文件管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "文件路径与类型"
+// @Success 200 {object} utils.Response "创建成功"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 403 {object} utils.Response "访问被拒绝"
+// @Failure 500 {object} utils.Response "服务器内部错误"
+// @Router /files/create [post]
 func (fc *FileController) CreateFile(c *gin.Context) {
 	var req struct {
 		Path  string `json:"path" binding:"required"`
@@ -399,6 +425,19 @@ func (fc *FileController) CreateFile(c *gin.Context) {
 	utils.SuccessMsg(c, "创建成功")
 }
 
+// DeleteFile 删除文件或目录
+// @Summary 删除文件或目录
+// @Description 删除指定路径的文件或目录
+// @Tags 文件管理
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body object true "文件路径"
+// @Success 200 {object} utils.Response "删除成功"
+// @Failure 400 {object} utils.Response "请求参数错误"
+// @Failure 403 {object} utils.Response "访问被拒绝"
+// @Failure 500 {object} utils.Response "服务器内部错误"
+// @Router /files/delete [post]
 func (fc *FileController) DeleteFile(c *gin.Context) {
 	var req struct {
 		Path string `json:"path" binding:"required"`

@@ -344,7 +344,7 @@ func (s *MiseService) Envs() (map[string]string, error) {
 		}
 		// 仅显示来自全局配置文件的环境变量
 		if strings.Contains(strings.ToLower(fields[len(fields)-1]), "config.toml") {
-			envs[fields[0]] = fields[1]
+			envs[fields[0]] = strings.Join(fields[1:len(fields)-1], " ")
 		}
 	}
 	return envs, nil

@@ -3,23 +3,38 @@ import { ref, computed, watch } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Search, Loader2, Check, ChevronsUpDown } from 'lucide-vue-next'
+import { Search, Loader2, Check, ChevronsUpDown, Globe } from 'lucide-vue-next'
 import { api } from '@/api'
 import { toast } from 'vue-sonner'
 import { getLangIcon } from '@/utils/icons'
 import { cn } from '@/lib/utils'
 
 const emit = defineEmits<{
-    (e: 'install', plugin: string, version: string): void
+    (e: 'install', plugin: string, version: string, mirrorUrl: string, saveDefault: boolean): void
 }>()
 
 const isOpen = ref(false)
 
 const newLangPlugin = ref('')
 const newLangVersion = ref('')
+
+const MIRROR_PRESETS = [
+    { label: 'gh-proxy.com (推荐)', value: 'https://gh-proxy.com/' },
+    { label: 'ghfast.top', value: 'https://ghfast.top/' },
+    { label: 'ghproxy.net', value: 'https://ghproxy.net/' },
+    { label: 'github.moeyy.xyz', value: 'https://github.moeyy.xyz/' },
+    { label: '不使用加速 (官方直连)', value: 'none' },
+    { label: '自定义镜像源', value: 'custom' },
+]
+
+const selectedMirror = ref('https://gh-proxy.com/')
+const customMirror = ref('')
+const saveAsDefaultMirror = ref(false)
 
 const availablePlugins = ref<string[]>([])
 const loadingPlugins = ref(false)
@@ -72,6 +87,34 @@ async function fetchVersions(plugin: string) {
     }
 }
 
+async function loadDefaultMirror() {
+    try {
+        const envs = await api.mise.getEnvs()
+        const repl = envs['MISE_URL_REPLACEMENTS']
+        if (repl) {
+            try {
+                const map = JSON.parse(repl)
+                const target = (map['https://github.com/'] || '') as string
+                if (target.endsWith('https://github.com/')) {
+                    const prefix = target.slice(0, -'https://github.com/'.length)
+                    const found = MIRROR_PRESETS.find(p => p.value !== 'none' && p.value !== 'custom' && (p.value === prefix || p.value.replace(/\/$/, '') === prefix.replace(/\/$/, '')))
+                    if (found) {
+                        selectedMirror.value = found.value
+                    } else if (prefix) {
+                        selectedMirror.value = 'custom'
+                        customMirror.value = prefix
+                    }
+                    return
+                }
+            } catch {
+                // ignore JSON parse error
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load global envs for mirror', e)
+    }
+}
+
 watch(newLangPlugin, (newVal) => {
     if (newVal) {
         fetchVersions(newVal)
@@ -84,8 +127,10 @@ watch(newLangPlugin, (newVal) => {
 function openDialog() {
     newLangPlugin.value = ''
     newLangVersion.value = ''
+    saveAsDefaultMirror.value = false
     isOpen.value = true
     fetchPlugins()
+    loadDefaultMirror()
 }
 
 function startInstall() {
@@ -97,9 +142,27 @@ function startInstall() {
         toast.error('请选择版本')
         return
     }
+
+    let finalMirror = ''
+    if (selectedMirror.value === 'none') {
+        finalMirror = ''
+    } else if (selectedMirror.value === 'custom') {
+        let custom = customMirror.value.trim()
+        if (!custom) {
+            toast.error('请输入自定义加速源地址')
+            return
+        }
+        if (!custom.endsWith('/')) {
+            custom += '/'
+        }
+        finalMirror = custom
+    } else {
+        finalMirror = selectedMirror.value
+    }
+
     const version = newLangVersion.value.trim()
     isOpen.value = false
-    emit('install', newLangPlugin.value.trim(), version)
+    emit('install', newLangPlugin.value.trim(), version, finalMirror, saveAsDefaultMirror.value)
 }
 
 defineExpose({ openDialog })
@@ -107,12 +170,12 @@ defineExpose({ openDialog })
 
 <template>
     <Dialog v-model:open="isOpen">
-        <DialogContent class="sm:max-w-[400px]">
+        <DialogContent class="sm:max-w-[420px]">
             <DialogHeader>
                 <DialogTitle>管理语言运行时</DialogTitle>
                 <DialogDescription>配置并安装新的编程语言环境</DialogDescription>
             </DialogHeader>
-            <div class="grid gap-6 py-4">
+            <div class="grid gap-5 py-4">
                 <div class="grid gap-2">
                     <Label>语言名称 (Mise Plugin)</Label>
                     <Popover v-model:open="openPluginPopover">
@@ -215,6 +278,33 @@ defineExpose({ openDialog })
                             </ScrollArea>
                         </PopoverContent>
                     </Popover>
+                </div>
+
+                <div class="grid gap-2">
+                    <Label class="flex items-center gap-1.5">
+                        <Globe class="h-3.5 w-3.5 text-primary" />
+                        <span>下载加速 (GitHub 镜像)</span>
+                    </Label>
+                    <Select v-model="selectedMirror">
+                        <SelectTrigger class="w-full">
+                            <SelectValue placeholder="选择加速源..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-for="item in MIRROR_PRESETS" :key="item.value" :value="item.value">
+                                {{ item.label }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div v-if="selectedMirror === 'custom'" class="pt-1">
+                        <Input v-model="customMirror" placeholder="输入代理前缀，如 https://ghfast.top/" class="h-8 text-xs" />
+                    </div>
+                    <div class="flex items-center space-x-2 pt-1">
+                        <Checkbox id="save-default-mirror" :checked="saveAsDefaultMirror"
+                            @update:checked="(val: boolean | 'indeterminate') => saveAsDefaultMirror = !!val" />
+                        <label for="save-default-mirror" class="text-xs text-muted-foreground cursor-pointer select-none">
+                            设为全局默认加速源 (保存到 Mise 配置)
+                        </label>
+                    </div>
                 </div>
             </div>
             <DialogFooter>

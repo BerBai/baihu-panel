@@ -87,8 +87,68 @@ function runInTerminal(command: string) {
     showTerminalDialog.value = true
 }
 
-function handleInstall(plugin: string, version: string) {
-    const cmd = `mise install ${plugin}@${version}`
+const serverOs = ref('')
+
+async function fetchServerOs() {
+    try {
+        const stats = await api.settings.getMonitor()
+        if (stats?.env?.os) {
+            serverOs.value = stats.env.os.toLowerCase()
+        }
+    } catch {
+        serverOs.value = 'linux'
+    }
+}
+
+async function handleInstall(plugin: string, version: string, mirrorUrl?: string, saveDefault?: boolean) {
+    if (saveDefault) {
+        try {
+            if (mirrorUrl) {
+                const fullTarget = mirrorUrl.endsWith('/') ? `${mirrorUrl}https://github.com/` : `${mirrorUrl}/https://github.com/`
+                const replacement = JSON.stringify({ "https://github.com/": fullTarget })
+                await api.mise.setEnv('MISE_URL_REPLACEMENTS', replacement)
+                toast.success('已保存默认加速源')
+            } else {
+                await api.mise.unsetEnv('MISE_URL_REPLACEMENTS')
+                toast.success('已取消默认加速源')
+            }
+        } catch (e) {
+            console.error('保存默认镜像失败:', e)
+            toast.error('保存默认镜像失败: ' + e)
+        }
+    }
+
+    const envParts: string[] = []
+    if (mirrorUrl) {
+        const fullTarget = mirrorUrl.endsWith('/') ? `${mirrorUrl}https://github.com/` : `${mirrorUrl}/https://github.com/`
+        envParts.push(`MISE_URL_REPLACEMENTS='{"https://github.com/":"${fullTarget}"}'`)
+        if (plugin === 'node') {
+            envParts.push(`MISE_NODE_MIRROR_URL="https://npmmirror.com/mirrors/node/"`)
+        } else if (plugin === 'go') {
+            envParts.push(`MISE_GO_DOWNLOAD_MIRROR="https://golang.google.cn/dl"`)
+        } else if (plugin === 'python') {
+            envParts.push(`PYTHON_BUILD_MIRROR_URL="https://registry.npmmirror.com/-/binary/python/"`)
+            envParts.push(`PYTHON_BUILD_MIRROR_URL_SKIP_CHECKSUM=1`)
+        }
+    }
+
+    let cmd = ''
+    if (envParts.length > 0) {
+        if (serverOs.value === 'windows') {
+            const pwshEnvs = envParts.map(part => {
+                const eqIdx = part.indexOf('=')
+                const k = part.substring(0, eqIdx)
+                const v = part.substring(eqIdx + 1)
+                return `$env:${k}=${v}`
+            }).join('; ')
+            cmd = `${pwshEnvs}; mise install ${plugin}@${version}`
+        } else {
+            cmd = `${envParts.join(' ')} mise install ${plugin}@${version}`
+        }
+    } else {
+        cmd = `mise install ${plugin}@${version}`
+    }
+
     runInTerminal(cmd)
 }
 
@@ -142,6 +202,7 @@ function viewDetail(lang: DisplayLanguage) {
 
 onMounted(() => {
     loadLanguages()
+    fetchServerOs()
 })
 </script>
 

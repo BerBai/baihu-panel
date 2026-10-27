@@ -6,6 +6,23 @@ outline: 2
 
 本页面记录了baihu-panel的主要版本更新历史。
 
+## 2026.10.27 (v1.5.8)
+### 语言安装下载镜像加速与 Mise 运行时镜像源配置、已装应用更新检测与无损升级中枢、OpenAPI 文件管理能力开放与全站安全加固
+- **语言安装下载镜像加速与 Mise 运行时镜像源配置 (Languages & Mise & Perf)**：
+  - **新增语言下载镜像加速**：在新增语言弹窗中集成 GitHub 镜像选择功能，内置 `gh-proxy.com (推荐)`、`ghfast.top`、`ghproxy.net`、`github.moeyy.xyz` 及自定义代理前缀选项，彻底解决境内服务器通过 GitHub Releases 安装 Python/Node/Go 等运行时下载超时失败的痛点（[#200](https://github.com/engigu/baihu-panel/issues/200)）；
+  - **全局默认加速源持久化与多系统命令注入**：支持将所选镜像持久化写入 Mise 全局配置（`MISE_URL_REPLACEMENTS`），后续自动化或终端安装全量生效；同时安装终端根据底层操作系统（Linux/Windows）自适应注入环境变量加速执行；
+  - **加速选项卡双区分类管理**：将“加速”页面划分为“运行时下载加速 (Mise Runtime)”与“包管理器依赖源 (Package Registry)”两大区域，支持一键配置 Mise GitHub 加速、Node.js 运行时镜像（`MISE_NODE_MIRROR_URL`）、Go 官方国内镜像（`MISE_GO_DOWNLOAD_MIRROR`）及 Python 编译源码镜像（`PYTHON_BUILD_MIRROR_URL`）；
+  - **系统环境变量无损提取优化**：修复优化 `mise_service` 中环境变量解析逻辑，支持带有空格与 JSON 结构的变量值完整无损还原。
+- **已装应用更新检测与一键无损升级中枢 (Apps & Scheduler & Feature)**：
+  - **系统级更新检测与手动检测**：支持已安装应用的版本更新自检，内置系统级每日定时巡检与手动立即检测，发现新版本时联动系统通知中心发送更新提醒（[#201](https://github.com/engigu/baihu-panel/pull/201)）；
+  - **版本漂移检测与无损升级闭环**：支持实时校验当前运行版本与应用清单最新定义的版本差异，提供一键无损升级能力，自动原子重构调度实体、系统环境变量、关联任务与依赖环境，保障升级过程平滑无缝。
+- **OpenAPI 文件管理接口开放与 404 兜底修复 (OpenAPI & Web & Fix)**：
+  - **开放文件写入与保存接口**：OpenAPI 正式开放文件保存与写入端点，支持第三方工具及 CI/CD 自动化流水线远程下发管理文件（[#202](https://github.com/engigu/baihu-panel/pull/202)）；
+  - **静态资源与 SPA 路由 404 兜底机制完善**：修复优化前端路由与静态资源兜底响应行为。
+- **全站核心依赖安全加固与 Dependabot 漏洞清零 (Security & Dependencies)**：
+  - **核心工具链安全升级**：升级 `vite` 至 `^7.3.7`（Web 端）与 `^6.4.5`（Docs 端），彻底消除 `launch-editor` 命令注入与路径校验绕过漏洞；
+  - **全链路依赖漏洞修复**：同步升级与覆盖 `dompurify` (`^3.4.17`)、`zod` (`^4.6.7`)、`undici` (`^7.30.1`)、`fast-uri` (`^4.2.3`)、`serialize-javascript` (`^7.1.4`)，实现主系统与文档站点全量 `npm audit` 0 漏洞，GitHub Dependabot 安全告警全部闭环清零。
+
 ## 2026.10.21 (v1.5.7)
 ### 任务日志自定义变量提取与通知模板注入、设置中心全局悬浮保存与改动追踪、脚本编辑终端重构及体验加固
 - **任务日志自定义变量提取与通知模板注入 (Major Feature & Notify & Tasks)**：

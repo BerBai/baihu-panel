@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/engigu/baihu-panel/internal/constant"
-	"github.com/engigu/baihu-panel/internal/database"
-	"github.com/engigu/baihu-panel/internal/models"
 	"github.com/engigu/baihu-panel/internal/services/app"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -24,6 +22,10 @@ func registerAppTools(s *server.MCPServer, deps *Deps) {
 	registerInstallAppTool(s, deps)
 	registerSwitchAppScenarioTool(s, deps)
 	registerUninstallAppTool(s, deps)
+	registerCheckAppUpdatesTool(s, deps)
+	registerUpdateAppTool(s, deps)
+	registerRollbackAppTool(s, deps)
+	registerSetAppAutoUpdateTool(s, deps)
 }
 
 // 1. list_store_apps: 检索应用商店列表
@@ -189,18 +191,14 @@ func handleGetInstalledApp(ctx context.Context, deps *Deps, req mcp.CallToolRequ
 	}
 
 	appDTO, err := deps.AppService.GetApp(appID)
-	if err != nil {
-		var masterTask models.Task
-		if dbErr := database.DB.Where("source_id = ? AND type = ?", "app:"+appID, constant.TaskTypeApp).First(&masterTask).Error; dbErr == nil {
-			appDTO, err = deps.AppService.GetApp(masterTask.ID)
-		}
-	}
 	if err != nil || appDTO == nil {
 		return mcp.NewToolResultError(fmt.Sprintf("未找到已安装应用: %s", appID)), nil
 	}
 
-	var childTasks []models.Task
-	database.DB.Where("source_id = ? AND type = ?", appDTO.ID, constant.TaskTypeNormal).Order("created_at asc").Find(&childTasks)
+	childTasks, err := app.GetAppChildTasks(appDTO.ID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("查询受控子任务失败: %v", err)), nil
+	}
 
 	resData := map[string]interface{}{
 		"app":         appDTO,
@@ -297,16 +295,14 @@ func handleSwitchAppScenario(ctx context.Context, deps *Deps, req mcp.CallToolRe
 		return mcp.NewToolResultError("app_id 和 scenario_id 均不能为空"), nil
 	}
 
-	targetTaskID := appID
-	var masterTask models.Task
-	if dbErr := database.DB.Where("id = ? AND type = ?", appID, constant.TaskTypeApp).First(&masterTask).Error; dbErr != nil {
-		if dbErr2 := database.DB.Where("source_id = ? AND type = ?", "app:"+appID, constant.TaskTypeApp).First(&masterTask).Error; dbErr2 == nil {
-			targetTaskID = masterTask.ID
-		}
+	masterTask, err := app.GetMasterTask(appID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("未找到声明式应用: %s", appID)), nil
 	}
+	targetTaskID := masterTask.ID
 
 	var buf bytes.Buffer
-	err := deps.AppService.SwitchScenario(targetTaskID, scenarioID, &buf)
+	err = deps.AppService.SwitchScenario(targetTaskID, scenarioID, &buf)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("切换场景失败: %v\n执行日志:\n%s", err, buf.String())), nil
 	}
@@ -370,6 +366,179 @@ func handleUninstallApp(ctx context.Context, deps *Deps, req mcp.CallToolRequest
 		"success":          true,
 		"deleted_task_ids": deletedTaskIDs,
 		"log":              buf.String(),
+	}
+	resJSON, _ := json.MarshalIndent(resData, "", "  ")
+	return mcp.NewToolResultText(string(resJSON)), nil
+}
+
+// 8. check_app_updates: 检测已装应用的可用更新
+func registerCheckAppUpdatesTool(s *server.MCPServer, deps *Deps) {
+	s.AddTool(mcp.NewTool("check_app_updates",
+		mcp.WithDescription("检测已安装声明式应用的可用更新：比对市场索引或远程清单源的版本与定义差异，返回每个应用的可更新状态与原因"),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleCheckAppUpdates(ctx, deps, req)
+	})
+}
+
+func handleCheckAppUpdates(ctx context.Context, deps *Deps, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if deps.AppService == nil {
+		return mcp.NewToolResultError("AppService 未初始化"), nil
+	}
+
+	infos, err := deps.AppService.CheckUpdates()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("检测应用更新失败: %v", err)), nil
+	}
+
+	updatable := 0
+	for _, info := range infos {
+		if info.Updatable {
+			updatable++
+		}
+	}
+
+	resData := map[string]interface{}{
+		"updates":         infos,
+		"updatable_count": updatable,
+	}
+	resJSON, _ := json.MarshalIndent(resData, "", "  ")
+	return mcp.NewToolResultText(string(resJSON)), nil
+}
+
+// 9. update_app: 一键更新已装应用到最新版本
+func registerUpdateAppTool(s *server.MCPServer, deps *Deps) {
+	s.AddTool(mcp.NewTool("update_app",
+		mcp.WithDescription("一键更新已安装的声明式应用：按市场/远程清单最新版本重跑部署流水线，自动保留环境变量值、定时规则、场景与用户定制项。新版本存在缺值的必填环境变量时会被安全阀拦截，需传入 env_values 补值后重放"),
+		mcp.WithString("app_id", mcp.Required(), mcp.Description("应用 TaskID 或 Manifest ID")),
+		mcp.WithObject("env_values", mcp.Description("409 安全阀补值（key 为变量名）：安全阀拦截后按缺失清单补齐再重放")),
+		mcp.WithBoolean("skip_setup", mcp.Description("是否跳过环境与依赖安装（默认继承应用已保存构建选项）")),
+		mcp.WithBoolean("force_setup", mcp.Description("是否强制重新编译/安装环境依赖（默认继承应用已保存构建选项）")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleUpdateApp(ctx, deps, req)
+	})
+}
+
+func handleUpdateApp(ctx context.Context, deps *Deps, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return runAppUpdateOperation(ctx, deps, req, false)
+}
+
+// 10. rollback_app: 回滚到更新前快照版本
+func registerRollbackAppTool(s *server.MCPServer, deps *Deps) {
+	s.AddTool(mcp.NewTool("rollback_app",
+		mcp.WithDescription("将已安装的声明式应用回滚到上一成功版本（更新前自动生成的快照），同样保留全部用户配置与定制项。快照必填变量缺值时会被安全阀拦截，需传入 env_values 补值后重放"),
+		mcp.WithString("app_id", mcp.Required(), mcp.Description("应用 TaskID 或 Manifest ID")),
+		mcp.WithObject("env_values", mcp.Description("409 安全阀补值（key 为变量名）：安全阀拦截后按缺失清单补齐再重放")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleRollbackApp(ctx, deps, req)
+	})
+}
+
+func handleRollbackApp(ctx context.Context, deps *Deps, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return runAppUpdateOperation(ctx, deps, req, true)
+}
+
+// runAppUpdateOperation 更新/回滚共用编排：解析参数 → 调用服务 → 安全阀错误转结构化提示 → 同步调度
+func runAppUpdateOperation(ctx context.Context, deps *Deps, req mcp.CallToolRequest, rollback bool) (*mcp.CallToolResult, error) {
+	if deps.AppService == nil {
+		return mcp.NewToolResultError("AppService 未初始化"), nil
+	}
+
+	appID := strings.TrimSpace(req.GetString("app_id", ""))
+	if appID == "" {
+		return mcp.NewToolResultError("app_id 不能为空"), nil
+	}
+
+	envValues := make(map[string]string)
+	if raw, ok := req.GetArguments()["env_values"].(map[string]interface{}); ok {
+		for k, v := range raw {
+			if s, _ := v.(string); strings.TrimSpace(s) != "" {
+				envValues[k] = s
+			}
+		}
+	}
+
+	opts := app.AppUpdateOptions{
+		EnvValues:  envValues,
+		SkipSetup:  req.GetBool("skip_setup", false),
+		ForceSetup: req.GetBool("force_setup", false),
+	}
+
+	var buf bytes.Buffer
+	opName := "更新"
+	if rollback {
+		opName = "回滚"
+	}
+
+	var res *app.ApplyResult
+	var err error
+	if rollback {
+		res, err = deps.AppService.RollbackApp(appID, opts, &buf)
+	} else {
+		res, err = deps.AppService.UpdateApp(appID, opts, &buf)
+	}
+
+	if err != nil {
+		var conflict *app.AppUpdateConflictError
+		if errors.As(err, &conflict) {
+			// 安全阀拦截：回传缺失清单，引导补值后重放（破坏性变更永不静默执行）
+			resData := map[string]interface{}{
+				"success":      false,
+				"blocked":      "missing_required_envs",
+				"error":        err.Error(),
+				"missing_envs": conflict.MissingEnvs,
+				"log":          buf.String(),
+			}
+			resJSON, _ := json.MarshalIndent(resData, "", "  ")
+			return mcp.NewToolResultText(fmt.Sprintf("%s被安全阀拦截，请按 missing_envs 补齐 env_values 后重放：\n%s", opName, string(resJSON))), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("%s应用失败: %v\n执行日志:\n%s", opName, err, buf.String())), nil
+	}
+
+	if deps.ExecutorService != nil && res != nil && res.ID != "" {
+		deps.ExecutorService.SyncAppTasks(res.ID)
+	}
+
+	resData := map[string]interface{}{
+		"success": true,
+		"result":  res,
+		"log":     buf.String(),
+	}
+	resJSON, _ := json.MarshalIndent(resData, "", "  ")
+	return mcp.NewToolResultText(string(resJSON)), nil
+}
+
+// 11. set_app_auto_update: 开/关应用自动更新
+func registerSetAppAutoUpdateTool(s *server.MCPServer, deps *Deps) {
+	s.AddTool(mcp.NewTool("set_app_auto_update",
+		mcp.WithDescription("开/关已安装声明式应用的自动更新：开启后每次调度调和前自动检测更新源并经 409 安全阀更新至最新版本（每应用每日节流），安全阀拦截时降级为通知并保持当前版本。默认关闭，需按应用显式开启"),
+		mcp.WithString("app_id", mcp.Required(), mcp.Description("应用 TaskID 或 Manifest ID")),
+		mcp.WithBoolean("enabled", mcp.Required(), mcp.Description("true 开启 / false 关闭")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleSetAppAutoUpdate(ctx, deps, req)
+	})
+}
+
+func handleSetAppAutoUpdate(ctx context.Context, deps *Deps, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if deps.AppService == nil {
+		return mcp.NewToolResultError("AppService 未初始化"), nil
+	}
+
+	appID := strings.TrimSpace(req.GetString("app_id", ""))
+	if appID == "" {
+		return mcp.NewToolResultError("app_id 不能为空"), nil
+	}
+	enabled := req.GetBool("enabled", false)
+
+	dto, err := deps.AppService.SetAppAutoUpdate(appID, enabled)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("设置自动更新失败: %v", err)), nil
+	}
+
+	resData := map[string]interface{}{
+		"success":     true,
+		"app_id":      dto.ID,
+		"auto_update": dto.AutoUpdate,
+		"version":     dto.Version,
 	}
 	resJSON, _ := json.MarshalIndent(resData, "", "  ")
 	return mcp.NewToolResultText(string(resJSON)), nil

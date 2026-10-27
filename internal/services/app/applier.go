@@ -23,25 +23,37 @@ type LogFunc func(format string, args ...interface{})
 
 // ApplyOptions 应用执行选项
 type ApplyOptions struct {
-	ManifestPath  string            // Manifest 来源路径或 URL
-	ScenarioID    string            // 指定激活的场景 ID（留空默认选择 default 场景）
-	EnvValues     map[string]string // 用户指定的环境变量覆盖值
-	SkipSetup     bool              // 是否跳过依赖安装
-	SkipSync      bool              // 是否跳过代码源拉取
-	ForceSetup    bool              // 强制执行依赖安装与编译（跳过 check 探活）
-	OverwriteEnv  bool              // 是否覆盖已有环境变量（默认 false 不覆盖）
-	OverwriteTask *bool             // 是否覆盖和插入任务（默认 true 覆盖）
-	Schedule      string            // 定时规则 Cron 表达式
-	RandomRange   int               // 随机延迟范围(秒)
-	Timeout       int               // 执行超时时间(分钟)
-	RetryCount    int               // 失败重试次数
-	RetryInterval int               // 失败重试间隔(秒)
-	CleanConfig   string            // 日志清理配置
-	UnifiedConfig string            // 统一配置 JSON
-	Tag           string            // 统一绑定的分类 Tag
-	UserID        string            // 当前安装用户的 UserID
+	ManifestPath  string              // Manifest 来源路径或 URL
+	ScenarioID    string              // 指定激活的场景 ID（留空默认选择 default 场景）
+	EnvValues     map[string]string   // 用户指定的环境变量覆盖值
+	SkipSetup     bool                // 是否跳过依赖安装
+	SkipSync      bool                // 是否跳过代码源拉取
+	ForceSetup    bool                // 强制执行依赖安装与编译（跳过 check 探活）
+	OverwriteEnv  bool                // 是否覆盖已有环境变量（默认 false 不覆盖）
+	OverwriteTask *bool               // 是否覆盖和插入任务（默认 true 覆盖）
+	Schedule      string              // 定时规则 Cron 表达式
+	RandomRange   int                 // 随机延迟范围(秒)
+	Timeout       int                 // 执行超时时间(分钟)
+	RetryCount    int                 // 失败重试次数
+	RetryInterval int                 // 失败重试间隔(秒)
+	CleanConfig   string              // 日志清理配置
+	UnifiedConfig string              // 统一配置 JSON
+	Tag           string              // 统一绑定的分类 Tag
+	UserID        string              // 当前安装用户的 UserID
 	Languages     []map[string]string // 关联绑定的运行语言环境列表
-	LogWriter     io.Writer         // 执行日志输出流
+	LogWriter     io.Writer           // 执行日志输出流
+
+	BaseManifestRaw string // 旧清单快照（定制识别基线：对比子任务当前 Cron 判定用户定制）
+	BaseScenarioID  string // 旧清单激活场景 ID（配合 BaseManifestRaw 计算基线 Cron）
+
+	PreviousSnapshot      *models.AppPreviousSnapshot // 更新前快照：更新编排传入，随主任务配置一并落库
+	ClearPreviousSnapshot bool                        // 回滚成功后清空快照（显式清空，优先级高于继承）
+
+	SkipAppLock bool // 跳过 per-app 文件锁：仅供调和路径（调度器已持有应用锁）经 CLI --no-lock 传入，避免父子进程重复加锁自锁
+
+	SavedManifestPath string // 调和路径专用：CLI --source-path 传入已保存更新源（URL/本地路径），落库时覆盖临时清单快照路径，避免调和运行后 URL 更新源丢失
+
+	KeepEnvValues bool // 保留用户已填环境变量值：更新路径专用，连清单级 overwrite_env 声明也一并忽略
 }
 
 // ApplyResult 应用执行结果
@@ -94,7 +106,7 @@ func (a *AppApplier) Apply(manifest *AppManifest, rawYAML []byte, opts ApplyOpti
 		if !opts.SkipSync && manifest.BuildOpts.SkipSync {
 			opts.SkipSync = true
 		}
-		if !opts.OverwriteEnv && manifest.BuildOpts.OverwriteEnv {
+		if !opts.KeepEnvValues && !opts.OverwriteEnv && manifest.BuildOpts.OverwriteEnv {
 			opts.OverwriteEnv = true
 		}
 		if opts.OverwriteTask == nil && manifest.BuildOpts.OverwriteTask != nil {
@@ -241,6 +253,14 @@ func (a *AppApplier) execRepoSync(idx int, total int, src AppSource, appDir stri
 	}
 	_ = os.MkdirAll(targetAbsDir, 0755)
 
+	// 调和日志增强：记录同步前 HEAD，同步成功后对比提交数，提示用户检查应用更新
+	previousHead := ""
+	if _, err := os.Stat(gitDir); err == nil {
+		if out, cErr := exec.Command("git", "-C", targetAbsDir, "rev-parse", "HEAD").Output(); cErr == nil {
+			previousHead = strings.TrimSpace(string(out))
+		}
+	}
+
 	syncArgs := []string{
 		"--source-type", src.SourceType,
 		"--source-url", src.SourceURL,
@@ -310,6 +330,20 @@ func (a *AppApplier) execRepoSync(idx int, total int, src AppSource, appDir stri
 		branchDesc = "默认分支"
 	}
 	log("  ✓ [%d/%d] 代码源 '%s' 同步就绪 (类型: %s, 分支: %s%s)", idx+1, total, src.ID, src.SourceType, branchDesc, filterNote)
+
+	// 调和日志增强：对比同步前后 HEAD，有新提交时提示检查应用更新（仅 Git 源）
+	if previousHead != "" {
+		if newOut, cErr := exec.Command("git", "-C", targetAbsDir, "rev-parse", "HEAD").Output(); cErr == nil {
+			newHead := strings.TrimSpace(string(newOut))
+			if newHead != "" && newHead != previousHead {
+				if cntOut, cntErr := exec.Command("git", "-C", targetAbsDir, "rev-list", "--count", previousHead+".."+newHead).Output(); cntErr == nil {
+					log("  ℹ 代码已更新 %s 个提交，上游可能引入新任务或新环境变量，建议检查应用更新", strings.TrimSpace(string(cntOut)))
+				} else {
+					log("  ℹ 代码已有更新，上游可能引入新任务或新环境变量，建议检查应用更新")
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -579,6 +613,29 @@ func (a *AppApplier) orchestrateTasks(manifest *AppManifest, appDir string, mast
 	templateTag := manifest.GetTemplateTag()
 	taskTag := resolveEnvTag(templateTag, opts.Tag, manifest.ID)
 
+	// 定制识别基线：解析旧清单的任务 Cron（含场景预设覆盖），用于识别用户定制
+	// 规则：子任务当前 Cron 与旧清单基线不一致 → 视为用户定制，本次编排保留用户值
+	baseCrons := make(map[string]string)
+	if opts.BaseManifestRaw != "" {
+		if baseManifest, bErr := ParseManifestFromYAML([]byte(opts.BaseManifestRaw)); bErr == nil {
+			baseScenario := resolveActiveScenarioItem(baseManifest.Scenarios, opts.BaseScenarioID)
+			for _, bt := range baseManifest.GetTasks() {
+				bc := bt.Cron
+				if bc == "" {
+					bc = bt.DefaultCron
+				}
+				if baseScenario != nil && baseScenario.TaskPresets != nil {
+					if p, ok := baseScenario.TaskPresets[bt.ID]; ok && p.Cron != "" {
+						bc = p.Cron
+					}
+				}
+				if bc != "" {
+					baseCrons[bt.Name] = normalizeCron(bc)
+				}
+			}
+		}
+	}
+
 	defaultUnifiedConfig := models.UnifiedTaskConfig{
 		Common: &models.CommonConfig{
 			Concurrency: 0,
@@ -636,6 +693,21 @@ func (a *AppApplier) orchestrateTasks(manifest *AppManifest, appDir string, mast
 		var existingTask models.Task
 		tx := database.DB.Where("source_id = ? AND type = ? AND name = ?", masterTaskID, constant.TaskTypeNormal, t.Name).Limit(1).Find(&existingTask)
 		if tx.RowsAffected > 0 {
+			// 定制识别保留：子任务 Cron 与旧清单基线不一致 → 视为用户定制，保留用户值
+			if existingTask.Schedule != "" && scheduleCron != "" {
+				baseCron, hasBase := baseCrons[t.Name]
+				var userCustomized bool
+				if hasBase {
+					userCustomized = existingTask.Schedule != baseCron
+				} else {
+					userCustomized = existingTask.Schedule != scheduleCron
+				}
+				if userCustomized {
+					log("  ~ 保留用户定制 Cron: %s (%s)", t.Name, existingTask.Schedule)
+					scheduleCron = existingTask.Schedule
+				}
+			}
+
 			existingTask.Name = t.Name
 			existingTask.Command = models.BigText(cmdStr)
 			existingTask.Schedule = scheduleCron
@@ -892,6 +964,13 @@ func resolveTemplateConfig(opts *ApplyOptions, unified *models.UnifiedTaskConfig
 func (a *AppApplier) saveMasterAppTask(manifest *AppManifest, rawYAML []byte, appDir string, manifestPath string, targetScenarioID string, envValues map[string]string, opts ApplyOptions, log LogFunc) (*models.Task, string, error) {
 	activeScenarioID := resolveActiveScenarioID(manifest.Scenarios, targetScenarioID)
 
+	// 调和路径以已保存更新源为准落库：调和应用的是本地临时清单快照，
+	// 若把临时快照路径写回 manifest_path，URL 更新源会在首次调和后丢失（检测退化为 no_source）
+	persistManifestPath := manifestPath
+	if opts.SavedManifestPath != "" {
+		persistManifestPath = opts.SavedManifestPath
+	}
+
 	appCfg := models.AppTaskConfig{
 		ID:              manifest.ID,
 		Name:            manifest.Name,
@@ -902,7 +981,7 @@ func (a *AppApplier) saveMasterAppTask(manifest *AppManifest, rawYAML []byte, ap
 		Description:     manifest.Description,
 		Icon:            manifest.Icon,
 		Homepage:        manifest.Homepage,
-		ManifestPath:    sanitizeManifestPath(manifestPath, manifest),
+		ManifestPath:    sanitizeManifestPath(persistManifestPath, manifest),
 		ManifestRaw:     string(rawYAML),
 		CurrentScenario: activeScenarioID,
 		Status:          constant.AppStatusInstalled,
@@ -933,6 +1012,22 @@ func (a *AppApplier) saveMasterAppTask(manifest *AppManifest, rawYAML []byte, ap
 					appCfg.BuildOpts.OverwriteTask = unified.App.BuildOpts.OverwriteTask
 				}
 			}
+			// 更新前快照：回滚成功显式清空；更新编排经 ApplyOptions 传入；
+			// 其余写路径（部署重放/编辑保存/场景切换）继承已保存快照，避免回滚能力被静默丢失
+			if opts.ClearPreviousSnapshot {
+				appCfg.Previous = nil
+			} else {
+				appCfg.Previous = opts.PreviousSnapshot
+				if appCfg.Previous == nil {
+					appCfg.Previous = unified.App.Previous
+				}
+			}
+			// 闸门挂起标记：非更新写路径继承（更新/回滚成功后由更新编排显式清除）
+			appCfg.PendingGate = unified.App.PendingGate
+			// 自动更新开关与节流时间戳（P3）：配置属面板侧生命周期管理，不在清单中声明，
+			// 与 PendingGate 同理随所有 Apply 写路径继承，避免调和重放后自动更新被静默关闭
+			appCfg.AutoUpdate = unified.App.AutoUpdate
+			appCfg.AutoUpdatedAt = unified.App.AutoUpdatedAt
 		}
 	}
 
@@ -1047,4 +1142,3 @@ func (a *AppApplier) saveMasterAppTask(manifest *AppManifest, rawYAML []byte, ap
 	relation.DataRelation.SaveTags(newTask.ID, constant.RelationTypeTaskTag, appCfg.Template.Tag)
 	return &newTask, activeScenarioID, nil
 }
-

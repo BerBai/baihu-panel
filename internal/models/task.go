@@ -192,24 +192,36 @@ type AppTemplateConfig struct {
 
 // AppTaskConfig 应用任务配置
 type AppTaskConfig struct {
-	ID              string             `json:"id,omitempty"`
-	Name            string             `json:"name,omitempty"`
-	Version         string             `json:"version,omitempty"`
-	Author          string             `json:"author,omitempty"`
-	Category        string             `json:"category,omitempty"`
-	LastCommit      string             `json:"last_commit,omitempty"`
-	Description     string             `json:"description,omitempty"`
-	Icon            string             `json:"icon,omitempty"`
-	Homepage        string             `json:"homepage,omitempty"`
-	ManifestPath    string             `json:"manifest_path,omitempty"`
-	ManifestRaw     string             `json:"manifest_raw,omitempty"`
-	CurrentScenario string             `json:"current_scenario,omitempty"`
-	Status          string             `json:"status,omitempty"`
-	Template        *AppTemplateConfig `json:"template,omitempty"`
-	EnvValues       map[string]string  `json:"env_values,omitempty"`
-	BuildOpts       *AppBuildOpts      `json:"build_opts,omitempty"`
-	Schedule        string             `json:"schedule,omitempty"`
-	ScheduleOpts    *TaskScheduleOpts  `json:"schedule_opts,omitempty"`
+	ID              string               `json:"id,omitempty"`
+	Name            string               `json:"name,omitempty"`
+	Version         string               `json:"version,omitempty"`
+	Author          string               `json:"author,omitempty"`
+	Category        string               `json:"category,omitempty"`
+	LastCommit      string               `json:"last_commit,omitempty"`
+	Description     string               `json:"description,omitempty"`
+	Icon            string               `json:"icon,omitempty"`
+	Homepage        string               `json:"homepage,omitempty"`
+	ManifestPath    string               `json:"manifest_path,omitempty"`
+	ManifestRaw     string               `json:"manifest_raw,omitempty"`
+	CurrentScenario string               `json:"current_scenario,omitempty"`
+	Status          string               `json:"status,omitempty"`
+	Template        *AppTemplateConfig   `json:"template,omitempty"`
+	EnvValues       map[string]string    `json:"env_values,omitempty"`
+	BuildOpts       *AppBuildOpts        `json:"build_opts,omitempty"`
+	Schedule        string               `json:"schedule,omitempty"`
+	ScheduleOpts    *TaskScheduleOpts    `json:"schedule_opts,omitempty"`
+	Previous        *AppPreviousSnapshot `json:"previous,omitempty"`        // 更新前快照，供一键回滚（design/app-update-proposal.md §8）
+	PendingGate     string               `json:"pending_gate,omitempty"`    // 调和漂移闸门挂起原因（missing_envs 等，空串表示无挂起）
+	AutoUpdate      bool                 `json:"auto_update,omitempty"`     // 自动更新开关（默认关）：调度调和时经安全阀自动更新至更新源最新版本（P3 §10）
+	AutoUpdatedAt   string               `json:"auto_updated_at,omitempty"` // 上次自动刷新尝试时间（成功失败均计），引擎内每应用节流窗口依据
+}
+
+// AppPreviousSnapshot 更新前快照：单快照回滚，仅记录上一个成功版本的版本号与清单原文。
+// 不变式：Previous 永不指向当前已装版本；更新/回滚成功或失败后都会向该不变式收敛
+type AppPreviousSnapshot struct {
+	Version     string `json:"version,omitempty"`
+	ManifestRaw string `json:"manifest_raw,omitempty"`
+	UpdatedAt   string `json:"updated_at,omitempty"`
 }
 
 // TaskScheduleOpts 默认调度策略预设
@@ -395,6 +407,11 @@ func (t *Task) GetAppAuthor() string {
 		return appCfg.Author
 	}
 	return ""
+}
+
+// IsApp 判断当前任务是否为声明式应用主实体
+func (t *Task) IsApp() bool {
+	return t != nil && t.Type == constant.TaskTypeApp
 }
 
 // TaskLog 代表任务执行的日志记录

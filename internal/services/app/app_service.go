@@ -19,24 +19,33 @@ import (
 
 // AppDTO 已安装应用的综合数据传输实体（从 baihu_tasks 表中的 App 主任务记录及其 Config 动态反序列化）
 type AppDTO struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Version         string           `json:"version,omitempty"`
-	Author          string           `json:"author,omitempty"`
-	Category        string           `json:"category,omitempty"`
-	LastCommit      string           `json:"last_commit,omitempty"`
-	Description     string           `json:"description,omitempty"`
-	Icon            string           `json:"icon,omitempty"`
-	Homepage        string           `json:"homepage,omitempty"`
-	CurrentScenario string           `json:"current_scenario,omitempty"`
-	Status          string           `json:"status,omitempty"`
-	ManifestPath    string                   `json:"manifest_path,omitempty"`
-	ManifestRaw     string                   `json:"manifest_raw,omitempty"`
+	ID              string                    `json:"id"`
+	ManifestID      string                    `json:"manifest_id,omitempty"`
+	Name            string                    `json:"name"`
+	Version         string                    `json:"version,omitempty"`
+	Author          string                    `json:"author,omitempty"`
+	Category        string                    `json:"category,omitempty"`
+	LastCommit      string                    `json:"last_commit,omitempty"`
+	Description     string                    `json:"description,omitempty"`
+	Icon            string                    `json:"icon,omitempty"`
+	Homepage        string                    `json:"homepage,omitempty"`
+	CurrentScenario string                    `json:"current_scenario,omitempty"`
+	Status          string                    `json:"status,omitempty"`
+	ManifestPath    string                    `json:"manifest_path,omitempty"`
+	ManifestRaw     string                    `json:"manifest_raw,omitempty"`
 	Template        *models.AppTemplateConfig `json:"template,omitempty"`
-	TasksCount      int                      `json:"tasks_count"`
-	ScenariosCount  int                      `json:"scenarios_count"`
-	CreatedAt       models.LocalTime         `json:"created_at"`
-	UpdatedAt       models.LocalTime         `json:"updated_at"`
+	Previous        *AppPreviousInfo          `json:"previous,omitempty"`    // 回滚快照信息（指向当前版本时不返回）
+	AutoUpdate      bool                      `json:"auto_update,omitempty"` // 自动更新开关（P3，默认关）
+	TasksCount      int                       `json:"tasks_count"`
+	ScenariosCount  int                       `json:"scenarios_count"`
+	CreatedAt       models.LocalTime          `json:"created_at"`
+	UpdatedAt       models.LocalTime          `json:"updated_at"`
+}
+
+// AppPreviousInfo 回滚快照的对外展示信息（不含清单原文，避免列表/详情响应膨胀）
+type AppPreviousInfo struct {
+	Version   string `json:"version,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 type AppService struct{}
@@ -52,7 +61,7 @@ func (s *AppService) ApplyApp(pathOrURL string, opts ApplyOptions) (*ApplyResult
 	var err error
 
 	if strings.HasPrefix(pathOrURL, "http://") || strings.HasPrefix(pathOrURL, "https://") {
-		manifest, err = ParseManifestFromURL(pathOrURL, "")
+		manifest, rawData, err = ParseManifestFromURL(pathOrURL, "")
 		if err != nil {
 			return nil, err
 		}
@@ -70,21 +79,77 @@ func (s *AppService) ApplyApp(pathOrURL string, opts ApplyOptions) (*ApplyResult
 		}
 	}
 
+	// per-app 互斥:对已安装的同 ID 应用重放(再次部署/编辑重放)与 API 更新、调和执行互斥。
+	// SkipAppLock 仅供定时调和路径使用：调度器（ExecuteDispatcher）已持有应用锁，
+	// 而调和命令是本 CLI 的子进程，对同一文件锁重复加锁会父子互等造成自锁死锁
+	if !opts.SkipAppLock {
+		if existingID := findInstalledMasterTaskID(manifest.ID); existingID != "" {
+			lock, lockErr := LockAppUpdate(existingID, 10*time.Minute)
+			if lockErr != nil {
+				return nil, fmt.Errorf("应用正在更新或执行中，部署请稍后再试")
+			}
+			defer ReleaseAppLock(lock)
+		}
+	}
+
 	return DefaultApplier.Apply(manifest, rawData, opts)
 }
 
-// GetApp 从 baihu_tasks 表中读取 type = 'app' 的主任务记录
-func (s *AppService) GetApp(id string) (*AppDTO, error) {
+// GetMasterTask 严格根据 TaskID 查询声明式应用主实体（严禁依赖 source_id 模糊反查）
+func GetMasterTask(taskID string) (*models.Task, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, fmt.Errorf("应用 TaskID 不能为空")
+	}
 	var task models.Task
-	res := database.DB.Where("id = ? AND type = ?", id, constant.TaskTypeApp).Limit(1).Find(&task)
-	if res.Error != nil || res.RowsAffected == 0 {
-		return nil, fmt.Errorf("未找到应用: %s", id)
+	if err := database.DB.Where("id = ? AND type = ?", taskID, constant.TaskTypeApp).Limit(1).First(&task).Error; err != nil {
+		return nil, fmt.Errorf("未找到声明式应用实体 (#%s): %w", taskID, err)
+	}
+	return &task, nil
+}
+
+// GetAppChildTasks 严格按照主应用 ID 级联查询所有受控子任务
+func GetAppChildTasks(masterTaskID string) ([]models.Task, error) {
+	masterTaskID = strings.TrimSpace(masterTaskID)
+	if masterTaskID == "" {
+		return nil, fmt.Errorf("主应用 TaskID 不能为空")
+	}
+	var childTasks []models.Task
+	err := database.DB.Where("source_id = ? AND type = ?", masterTaskID, constant.TaskTypeNormal).
+		Order("created_at asc").
+		Find(&childTasks).Error
+	return childTasks, err
+}
+
+// findInstalledMasterTaskID 按 manifest ID 查找已安装应用的主任务 ID(未安装返回空串，统一通过 unified_config.app.id 匹配)
+func findInstalledMasterTaskID(manifestID string) string {
+	manifestID = strings.TrimSpace(manifestID)
+	if manifestID == "" {
+		return ""
+	}
+	var appTasks []models.Task
+	if err := database.DB.Where("type = ?", constant.TaskTypeApp).Find(&appTasks).Error; err != nil {
+		return ""
+	}
+	for _, t := range appTasks {
+		if strings.EqualFold(t.GetManifestID(), manifestID) {
+			return t.ID
+		}
+	}
+	return ""
+}
+
+// GetApp 从 baihu_tasks 表中读取 type = 'app' 的主任务记录（严格按主应用 TaskID 检索）
+func (s *AppService) GetApp(id string) (*AppDTO, error) {
+	task, err := GetMasterTask(id)
+	if err != nil {
+		return nil, err
 	}
 
 	var childCount int64
 	database.DB.Model(&models.Task{}).Where("source_id = ? AND type = ?", task.ID, constant.TaskTypeNormal).Count(&childCount)
 
-	return s.buildAppDTOFromTask(&task, int(childCount)), nil
+	return s.buildAppDTOFromTask(task, int(childCount)), nil
 }
 
 // ListApps 直接从 baihu_tasks 表中查询 type = 'app' 的所有主应用任务记录
@@ -119,6 +184,7 @@ func (s *AppService) buildAppDTOFromTask(task *models.Task, taskCount int) *AppD
 	}
 
 	if appCfg := task.GetAppConfig(); appCfg != nil {
+		dto.ManifestID = appCfg.ID
 		dto.Version = appCfg.Version
 		dto.Author = appCfg.Author
 		dto.Category = appCfg.Category
@@ -135,6 +201,15 @@ func (s *AppService) buildAppDTOFromTask(task *models.Task, taskCount int) *AppD
 		if appCfg.Template != nil {
 			dto.Template = appCfg.Template
 		}
+		// 快照指向当前版本（版本与清单原文均一致）时回滚为无意义操作，不对外暴露
+		if appCfg.Previous != nil && appCfg.Previous.ManifestRaw != "" &&
+			(appCfg.Previous.Version != appCfg.Version || appCfg.Previous.ManifestRaw != appCfg.ManifestRaw) {
+			dto.Previous = &AppPreviousInfo{
+				Version:   appCfg.Previous.Version,
+				UpdatedAt: appCfg.Previous.UpdatedAt,
+			}
+		}
+		dto.AutoUpdate = appCfg.AutoUpdate
 	}
 
 	if dto.ManifestRaw != "" {
@@ -230,6 +305,12 @@ func CleanAppTaskAndData(masterTask *models.Task, opts AppRemoveOptions, out io.
 	relation.DataRelation.CleanRelations(masterTask.ID, constant.RelationTypeTaskTag)
 	relation.DataRelation.CleanRelations(masterTask.ID, constant.RelationTypeTaskEnv)
 	database.DB.Unscoped().Where("id = ?", masterTask.ID).Delete(&models.Task{})
+
+	// 顺带清理指向本应用的未读系统提示（闸门「待补值」/每日更新提醒等）：应用已卸载，未读红点成死引用；
+	// 仅清未读提示，历史执行日志与已读提示保留作历史记录（另有 app_log_service 按类别的时效清理兜底）
+	database.DB.
+		Where("category = ? AND ref_id = ? AND status = ?", constant.LogCategorySystemNotice, masterTask.ID, constant.LogStatusUnread).
+		Delete(&models.AppLog{})
 
 	// 3. 按需清理应用关联的环境变量 (opts.CleanEnvs)
 	if opts.CleanEnvs {
@@ -398,16 +479,14 @@ func (s *AppService) RemoveAppWithOptions(taskID string, opts AppRemoveOptions, 
 
 	log(">> 正在卸载应用 [%s]...", taskID)
 
-	// 1. 使用 taskID 查找主应用任务实体（同时兼容传入 manifestID 的 CLI 场景）
-	var masterTask models.Task
-	if err := database.DB.Where("id = ? AND type = ?", taskID, constant.TaskTypeApp).First(&masterTask).Error; err != nil {
-		if err2 := database.DB.Where("source_id = ? AND type = ?", "app:"+taskID, constant.TaskTypeApp).First(&masterTask).Error; err2 != nil {
-			return nil, fmt.Errorf("未找到应用记录: %s", taskID)
-		}
+	// 1. 严格使用 taskID 检索主应用任务实体
+	masterTask, err := GetMasterTask(taskID)
+	if err != nil {
+		return nil, err
 	}
 
 	// 2. 调用公共逻辑执行清理
-	deletedTaskIDs, err := CleanAppTaskAndData(&masterTask, opts, out)
+	deletedTaskIDs, err := CleanAppTaskAndData(masterTask, opts, out)
 	if err != nil {
 		return nil, err
 	}
@@ -415,7 +494,6 @@ func (s *AppService) RemoveAppWithOptions(taskID string, opts AppRemoveOptions, 
 	log(">> ✓ 应用 [%s] 卸载与关联资源清理完成！", masterTask.Name)
 	return deletedTaskIDs, nil
 }
-
 
 // SwitchScenario 切换应用场景预设
 func (s *AppService) SwitchScenario(appID string, scenarioID string, out io.Writer) error {
@@ -433,15 +511,63 @@ func (s *AppService) SwitchScenario(appID string, scenarioID string, out io.Writ
 		return fmt.Errorf("解析应用定义失败: %w", err)
 	}
 
+	// per-app 互斥：场景切换重放 Apply 与 API 更新流程互斥
+	lock, lockErr := LockAppUpdate(appDTO.ID, 10*time.Minute)
+	if lockErr != nil {
+		return fmt.Errorf("应用更新进行中，场景切换请稍后再试: %w", lockErr)
+	}
+	defer ReleaseAppLock(lock)
+
 	opts := ApplyOptions{
 		ScenarioID: scenarioID,
-		SkipSetup:  true, // 场景切换无需重复安装依赖
-		SkipSync:   true, // 无需重复拉取源码
-		LogWriter:  out,
+		// 保留已保存的清单来源（URL/本地路径）：Apply 会把该值落库，传空会把 URL 更新源清丢，
+		// 导致场景切换后应用失去自动更新能力（检测退化为 manual/no_source）
+		ManifestPath: appDTO.ManifestPath,
+		SkipSetup:    true, // 场景切换无需重复安装依赖
+		SkipSync:     true, // 无需重复拉取源码
+		// 定制识别基线:以切换前的清单快照与旧场景为参照,仅保留真正偏离旧基线的用户定制,
+		// 否则新旧场景预设的 Cron 差异会被兜底逻辑误判为定制,导致场景切换永远不生效
+		BaseManifestRaw: appDTO.ManifestRaw,
+		BaseScenarioID:  appDTO.CurrentScenario,
+		LogWriter:       out,
 	}
 
 	_, err = DefaultApplier.Apply(manifest, []byte(appDTO.ManifestRaw), opts)
 	return err
+}
+
+// SetAppAutoUpdate 开/关应用自动更新（P3，design/app-update-proposal.md §10，三端一致由服务端组装）。
+// per-app 互斥覆盖：避免与更新/调和/编辑保存对 unified_config 的读改写竞态；
+// appID 兼容 TaskID 与 Manifest ID（与 update/rollback 路径一致，loadAppTask 内做双轨解析）
+func (s *AppService) SetAppAutoUpdate(appID string, enabled bool) (*AppDTO, error) {
+	masterTask, _, err := loadAppTask(appID)
+	if err != nil {
+		return nil, err
+	}
+
+	lock, lockErr := LockAppUpdate(masterTask.ID, 10*time.Minute)
+	if lockErr != nil {
+		return nil, fmt.Errorf("应用更新或执行进行中，请稍后再试: %w", lockErr)
+	}
+	defer ReleaseAppLock(lock)
+
+	// 锁内重新加载：等待锁期间配置可能已变化
+	var task models.Task
+	if err := database.DB.Where("id = ? AND type = ?", masterTask.ID, constant.TaskTypeApp).First(&task).Error; err != nil {
+		return nil, fmt.Errorf("未找到应用: %s", appID)
+	}
+	cfg := task.GetAppConfig()
+	if cfg == nil || cfg.ID == "" {
+		return nil, fmt.Errorf("应用缺少清单配置，无法设置自动更新")
+	}
+	cfg.AutoUpdate = enabled
+	unified := task.GetUnifiedConfig()
+	unified.App = cfg
+	if err := database.DB.Model(&task).Update("unified_config", unified.ToJSON()).Error; err != nil {
+		return nil, err
+	}
+
+	return s.GetApp(masterTask.ID)
 }
 
 // MarketplaceResult 应用市场数据载荷
@@ -581,4 +707,3 @@ func (s *AppService) ApplyMarketplaceApp(appID string, opts ApplyOptions) (*Appl
 	opts.ManifestPath = fmt.Sprintf("marketplace:%s", manifest.ID)
 	return DefaultApplier.Apply(manifest, rawYAMLBytes, opts)
 }
-

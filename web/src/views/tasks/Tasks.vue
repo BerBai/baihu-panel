@@ -11,13 +11,14 @@ import LogViewer from '@/views/history/LogViewer.vue'
 import XTerminal from '@/components/XTerminal.vue'
 import TaskHeader from './components/TaskHeader.vue'
 import TaskList from './components/TaskList.vue'
+import AppDetailDrawer from '@/views/apps/AppDetailDrawer.vue'
 import FloatingBatchBar from './components/FloatingBatchBar.vue'
 import TaskBatchSettingsDialog from './components/dialogs/TaskBatchSettingsDialog.vue'
 import TaskDeleteDialog from './components/dialogs/TaskDeleteDialog.vue'
 import TaskExportDialog from './components/dialogs/TaskExportDialog.vue'
 import AppShareDialog from './components/dialogs/AppShareDialog.vue'
 import { X } from 'lucide-vue-next'
-import { api, type Agent, type Task, type TaskLog } from '@/api'
+import { api, type Agent, type Task, type TaskLog, type AppUpdateInfo } from '@/api'
 import { toast } from 'vue-sonner'
 import { usePageSize } from '@/composables/usePageSize'
 import { useSelection } from '@/composables/useSelection'
@@ -26,6 +27,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { TASK_TYPE, TASK_STATUS } from '@/constants'
 import { generateBaihuCommand } from '@/utils/repo-parser'
 import { decompressFromBase64 } from '@/utils/decompress'
+import { consumeSseStream } from '@/utils/sse'
 
 export interface TaskView {
   name: string
@@ -45,6 +47,117 @@ const agents = ref<Agent[]>([])
 const loading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
+
+// 应用更新检测（design/app-update-proposal.md P1：调度实体为更新中枢）
+const updateMap = ref<Record<string, AppUpdateInfo>>({})
+const showAppDetail = ref(false)
+const appDetailId = ref('')
+
+// 一键更新全部（P2 update-all：前端串行循环，不做聚合端点）
+const updatingAll = ref(false)
+const updateAllProgress = ref<{ done: number; total: number } | null>(null)
+// 停止批量更新：置位后当前应用结束即不再排队后续应用；
+// 已开始的更新在服务端会继续完成（断开 SSE 不中断服务端执行）
+const updateAllCancelRequested = ref(false)
+let updateAllController: AbortController | null = null
+
+function cancelUpdateAll() {
+  updateAllCancelRequested.value = true
+  updateAllController?.abort()
+}
+
+const updatableCount = computed(() =>
+  Object.values(updateMap.value).filter(u => u.updatable).length
+)
+
+async function loadUpdateMap() {
+  try {
+    const res = await api.apps.updates()
+    const map: Record<string, AppUpdateInfo> = {}
+    for (const info of res.updates || []) {
+      map[info.task_id] = info
+    }
+    updateMap.value = map
+  } catch { /* 检测失败静默降级，不影响列表 */ }
+}
+
+// 消费单个应用的更新 SSE 流，仅提取最终结果（无日志 UI）
+async function consumeUpdateStreamOnce(appId: string, signal?: AbortSignal): Promise<'done' | 'conflict' | 'error'> {
+  let outcome: 'done' | 'conflict' | 'error' = 'error'
+  try {
+    await consumeSseStream(
+      `/api/v1/apps/${appId}/update?stream=true`,
+      { skip_setup: false, force_setup: false },
+      {
+        onDone: () => { outcome = 'done' },
+        onConflict: () => { outcome = 'conflict' }
+        // onError：维持默认 'error'，无需回调
+      },
+      signal
+    )
+  } catch { /* HTTP 错误/网络中断（含主动停止）按失败处理 */ }
+  return outcome
+}
+
+async function updateAllApps() {
+  const targets = Object.values(updateMap.value).filter(u => u.updatable)
+  if (!targets.length || updatingAll.value) return
+
+  updatingAll.value = true
+  updateAllCancelRequested.value = false
+  updateAllProgress.value = { done: 0, total: targets.length }
+  let success = 0
+  let conflict = 0
+  let failed = 0
+  let stopped = false
+  const conflictNames: string[] = []
+
+  for (const info of targets) {
+    updateAllController = new AbortController()
+    const outcome = await consumeUpdateStreamOnce(info.task_id, updateAllController.signal)
+    if (updateAllCancelRequested.value) {
+      // 主动停止：被中断应用的更新服务端会继续完成，不计入本轮统计
+      stopped = true
+      break
+    }
+    if (outcome === 'done') {
+      success++
+    } else if (outcome === 'conflict') {
+      conflict++
+      conflictNames.push(info.app_name)
+    } else {
+      failed++
+    }
+    if (updateAllProgress.value) {
+      updateAllProgress.value = { ...updateAllProgress.value, done: updateAllProgress.value.done + 1 }
+    }
+  }
+
+  updatingAll.value = false
+  updateAllController = null
+  updateAllProgress.value = null
+
+  if (stopped) {
+    toast.info(`批量更新已停止：本轮已成功 ${success} 个；被中断应用与剩余应用未计入，请稍后刷新查看`)
+    await loadTasks()
+    return
+  }
+
+  const parts = [`成功 ${success}`]
+  if (conflict > 0) parts.push(`安全阀拦截 ${conflict}（${conflictNames.join('、')}，需补值后单独更新）`)
+  if (failed > 0) parts.push(`失败 ${failed}`)
+  if (success > 0 && conflict === 0 && failed === 0) {
+    toast.success(`全部更新完成：${parts.join('，')}`)
+  } else {
+    toast.warning(`批量更新结束：${parts.join('，')}`)
+  }
+  await loadTasks()
+}
+
+function openAppDetail(task: Task) {
+  appDetailId.value = task.id
+  showAppDetail.value = true
+}
 
 // 通用多选状态机
 const {
@@ -149,6 +262,7 @@ async function loadTasks() {
     })
     tasks.value = res.data
     total.value = res.total
+    loadUpdateMap()
   } catch {
     toast.error('加载任务失败')
   } finally {
@@ -964,6 +1078,9 @@ watch(() => route.query.type, (newVal: any) => {
       :filter-agent-name="filterAgentName"
       :task-views="taskViews"
       :loading="loading"
+      :updatable-count="updatableCount"
+      :updating-all="updatingAll"
+      :update-all-progress="updateAllProgress"
       @search="handleSearch"
       @type-change="handleTypeChange"
       @refresh="loadTasks"
@@ -975,6 +1092,8 @@ watch(() => route.query.type, (newVal: any) => {
       @toggle-default-view="toggleDefaultView"
       @delete-view="deleteView"
       @save-view="saveView"
+      @update-all="updateAllApps"
+      @cancel-update-all="cancelUpdateAll"
     />
 
     <!-- 列表主体容器 -->
@@ -991,6 +1110,7 @@ watch(() => route.query.type, (newVal: any) => {
       :selected-ids="selectedIds"
       :is-all-selected="isAllSelected"
       :is-indeterminate="isIndeterminate"
+      :update-map="updateMap"
       @toggle-sort="toggleSort"
       @run-task="runTask"
       @view-logs="viewLogs"
@@ -1007,6 +1127,7 @@ watch(() => route.query.type, (newVal: any) => {
       @share-app="openShareApp"
       @toggle-select="toggleSelect"
       @toggle-all="toggleAll"
+      @open-app-detail="openAppDetail"
     >
       <template #pagination>
         <!-- 分页 (支持自定义每页条数) -->
@@ -1089,6 +1210,13 @@ watch(() => route.query.type, (newVal: any) => {
       :app="shareAppInfo"
       :app-name="shareAppName"
       :yaml-content="shareYamlText"
+    />
+
+    <!-- 应用详情与更新抽屉（更新中枢，design/app-update-proposal.md §9） -->
+    <AppDetailDrawer
+      v-model:open="showAppDetail"
+      :app-id="appDetailId"
+      @updated="loadTasks"
     />
 
     <!-- 依赖补全终端 -->

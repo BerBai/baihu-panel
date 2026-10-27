@@ -615,7 +615,9 @@ export const api = {
       query.set('clean_envs', String(cleanEnvs))
       return request<{ log: string }>(`/apps/${id}?${query.toString()}`, { method: 'DELETE' })
     },
-    marketplace: () => request<{ source: string; apps: MarketplaceApp[] }>('/apps/store')
+    marketplace: () => request<{ source: string; apps: MarketplaceApp[] }>('/apps/store'),
+    updates: () => request<{ updates: AppUpdateInfo[]; updatable_count: number; checked_at: string }>('/apps/updates'),
+    setAutoUpdate: (id: string, enabled: boolean) => request<{ app: AppItem; auto_update: boolean }>(`/apps/${id}/auto-update`, { method: 'POST', body: JSON.stringify({ enabled }) })
   }
 }
 
@@ -635,6 +637,14 @@ export interface AppItem {
   task_count: number
   created_at: string
   updated_at: string
+  previous?: AppPreviousInfo
+  auto_update?: boolean
+}
+
+// 回滚快照展示信息（design/app-update-proposal.md §8，单快照回滚）
+export interface AppPreviousInfo {
+  version: string
+  updated_at?: string
 }
 
 export interface AppEnvItemSchema {
@@ -676,6 +686,27 @@ export interface AppDetailResponse {
   app: AppItem
   manifest?: AppManifestSchema
   tasks: Task[]
+}
+
+// 应用更新检测结果（design/app-update-proposal.md §4.2）
+export interface AppUpdateInfo {
+  task_id: string
+  manifest_id: string
+  app_name: string
+  update_source: 'marketplace' | 'url' | 'manual'
+  installed_version: string
+  latest_version?: string
+  updatable: boolean
+  reason?: 'version_changed' | 'manifest_changed' | 'no_source' | 'source_mismatch' | 'fetch_failed'
+  last_commit?: string
+}
+
+// 409 安全阀返回的缺失必填环境变量
+export interface AppMissingEnvItem {
+  key: string
+  label?: string
+  type?: string
+  description?: string
 }
 
 export interface MarketplaceApp {

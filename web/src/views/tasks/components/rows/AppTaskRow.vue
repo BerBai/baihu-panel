@@ -211,7 +211,7 @@ function getAppConfig(task: Task) {
           <DropdownMenuContent align="end" class="w-32">
             <DropdownMenuItem @click="$emit('openDetail', task)">
               <Info class="h-3.5 w-3.5 mr-2" :class="updateInfo?.updatable ? 'text-amber-500' : 'text-primary'" />
-              <span>{{ updateInfo?.updatable ? '详情与更新' : '应用详情' }}</span>
+              <span>{{ updateInfo?.updatable ? '更新详情' : '应用详情' }}</span>
             </DropdownMenuItem>
             <DropdownMenuItem @click="$emit('filterByApp', task.id)">
               <ListTodo class="h-3.5 w-3.5 mr-2 text-emerald-500" />
@@ -328,7 +328,7 @@ function getAppConfig(task: Task) {
           <DropdownMenuContent align="end" class="w-32">
             <DropdownMenuItem @click="$emit('openDetail', task)">
               <Info class="h-3.5 w-3.5 mr-2" :class="updateInfo?.updatable ? 'text-amber-500' : 'text-primary'" />
-              <span>{{ updateInfo?.updatable ? '详情与更新' : '应用详情' }}</span>
+              <span>{{ updateInfo?.updatable ? '更新详情' : '应用详情' }}</span>
             </DropdownMenuItem>
             <DropdownMenuItem @click="$emit('filterByApp', task.id)">
               <ListTodo class="h-3.5 w-3.5 mr-2 text-emerald-500" />
